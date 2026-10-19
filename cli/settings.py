@@ -2,7 +2,11 @@ import sys
 from typing import Self
 
 from pydantic import AliasChoices, AnyHttpUrl, BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 
 class PayloadInput(BaseModel):
@@ -14,6 +18,17 @@ class CliSettings(BaseSettings):
     model_config = SettingsConfigDict(
         cli_parse_args=True, cli_prog_name="cache-cli", case_sensitive=True
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings,)
 
     host: AnyHttpUrl = Field(
         AnyHttpUrl("http://localhost:8000"),

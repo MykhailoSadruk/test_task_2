@@ -11,6 +11,7 @@ import uvicorn
 
 from app.main import get_app
 from cli.main import main
+from cli.settings import CliSettings
 
 PAYLOAD = {
     "list_1": ["first string", "second string", "third string"],
@@ -130,3 +131,36 @@ def test_help_exits_successfully(capsys: pytest.CaptureFixture[str]) -> None:
         main(["-h"])
     assert exit_info.value.code == 0
     assert "--host" in capsys.readouterr().out
+
+
+def set_conflicting_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOST", "http://bad")
+    monkeypatch.setenv("OUTPUT", "x.txt")
+    monkeypatch.setenv("R", "5")
+
+
+def test_environment_does_not_change_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_conflicting_environment(monkeypatch)
+
+    settings = CliSettings(_cli_parse_args=["-j", PAYLOAD_JSON])
+
+    assert str(settings.host) == "http://localhost:8000/"
+    assert settings.output == "-"
+    assert settings.repeat == 1
+
+
+def test_environment_is_ignored_by_main(
+    server_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    set_conflicting_environment(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["-H", server_url, "-j", PAYLOAD_JSON]) == 0
+
+    assert capsys.readouterr().out == EXPECTED_LINE + "\n"
+    assert not (tmp_path / "x.txt").exists()
