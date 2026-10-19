@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from app.infrastructure.models import Payload
+from app.infrastructure.dtos import PayloadDto
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
@@ -36,12 +36,9 @@ def test_add_many_persists_entries(session: Session) -> None:
 
 def test_payload_add_and_get(session: Session) -> None:
     repository = PayloadRepository(session)
-    repository.add(Payload(id="abc", output="A, B"))
+    repository.add(PayloadDto(id="abc", output="A, B"))
 
-    found = repository.get("abc")
-
-    assert found is not None
-    assert found.output == "A, B"
+    assert repository.get("abc") == PayloadDto(id="abc", output="A, B")
 
 
 def test_payload_get_missing_returns_none(session: Session) -> None:
