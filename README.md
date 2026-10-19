@@ -8,7 +8,8 @@ of both lists. Transformed strings and finished payloads are stored in SQLite.
 ## API
 
 `POST /payload` takes two lists of the same length and returns `201` with the
-payload id. A request with lists of different length is rejected with `422`.
+payload id, or `200` with the same id when that payload already exists. A request
+with lists of different length is rejected with `422`.
 
 By default the input has no size limit. `MAX_LIST_ITEMS` limits the number of items
 per list and `MAX_BODY_SIZE` limits the request body in bytes (see Configuration);
@@ -202,7 +203,7 @@ output for large requests.
 
 - Concurrent identical requests are safe: inserts of existing rows are ignored
   (`ON CONFLICT DO NOTHING`), so a burst of 30 parallel identical requests (300
-  strings per list) against SQLite all returned `201` with the same id.
+  strings per list) against SQLite all returned a success status with the same id.
 - Requests that need the same new string while a call for it is running share that
   call (single-flight), so the same string is never transformed twice at the same
   time. A request that reads the cache before another request has saved its result
