@@ -122,3 +122,25 @@ def test_transformer_call_limit_default_and_environment(
     monkeypatch.setenv("MAX_TRANSFORMER_CALLS", "7")
 
     assert Settings(_env_file=None).max_transformer_calls == 7
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        "postgresql+asyncpg://user:secret@localhost/cache",
+        "sqlite:///cache.db",
+        "mysql+aiomysql://localhost/cache",
+    ],
+)
+def test_only_async_sqlite_urls_are_accepted(database_url: str) -> None:
+    with pytest.raises(ValidationError, match=r"must start with sqlite\+aiosqlite:"):
+        Settings(_env_file=None, database_url=database_url)
+
+
+@pytest.mark.parametrize(
+    "database_url", ["sqlite+aiosqlite://", "sqlite+aiosqlite:///./cache.db"]
+)
+def test_async_sqlite_urls_are_accepted(database_url: str) -> None:
+    assert Settings(_env_file=None, database_url=database_url).database_url == (
+        database_url
+    )
