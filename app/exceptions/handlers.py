@@ -10,9 +10,12 @@ from app.exceptions.errors import (
 
 
 def payload_not_found_handler(_: Request, error: Exception) -> JSONResponse:
+    payload_id = (
+        error.payload_id if isinstance(error, PayloadNotFoundError) else str(error)
+    )
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
-        content={"detail": f"Payload {error} not found"},
+        content={"detail": f"Payload {payload_id} not found"},
     )
 
 

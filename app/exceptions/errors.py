@@ -1,5 +1,7 @@
 class PayloadNotFoundError(Exception):
-    pass
+    def __init__(self, payload_id: str) -> None:
+        super().__init__(payload_id)
+        self.payload_id = payload_id
 
 
 class TransformerError(Exception):

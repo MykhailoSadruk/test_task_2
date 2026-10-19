@@ -83,8 +83,10 @@ async def test_duplicate_strings_are_transformed_once(
 
 
 async def test_unknown_id_raises(service: PayloadService) -> None:
-    with pytest.raises(PayloadNotFoundError):
+    with pytest.raises(PayloadNotFoundError) as raised:
         await service.get_output("missing")
+
+    assert raised.value.payload_id == "missing"
 
 
 async def test_unequal_lengths_raise(service: PayloadService) -> None:
