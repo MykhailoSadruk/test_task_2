@@ -10,8 +10,9 @@ of both lists. Transformed strings and finished payloads are stored in SQLite.
 `POST /payload` takes two lists of the same length and returns `201` with the
 payload id. A request with lists of different length is rejected with `422`.
 
-The input has no size limits on the number of strings or on their length. Empty
-lists are accepted.
+By default the input has no size limit. `MAX_LIST_ITEMS` limits the number of items
+per list and `MAX_BODY_SIZE` limits the request body in bytes (see Configuration);
+a request over either limit is rejected with `413`. Empty lists are accepted.
 
 ```bash
 curl -X POST http://localhost:8000/payload \
@@ -128,6 +129,8 @@ unknown keys in `.env` are ignored.
 | `APP_HOST` | `127.0.0.1` | interface the server binds to |
 | `APP_PORT` | `8000` | server port, 1-65535 |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLAlchemy database URL |
+| `MAX_LIST_ITEMS` | unlimited | maximum items per list, `413` above it |
+| `MAX_BODY_SIZE` | unlimited | maximum request body in bytes, `413` above it |
 
 ```bash
 cp .env.example .env
@@ -155,24 +158,20 @@ mypy .
 
 ## Large payloads
 
-There is no input limit, and a request with 1,000,000 pairs (2,000,000 strings)
-works. Measured on one Windows machine with the server and SQLite on a local
-disk, with strings drawn from a pool of 500,000 distinct values (about 490,000
-distinct strings in the request), a 60 MB request body, and the
-`cache-cli` default timeout:
+Without limits, a request with 1,000,000 pairs (2,000,000 strings, about 490,000
+distinct) works. Measured on one Windows machine with the server and SQLite on a
+local disk, a 30 MB request body, sent with `cache-cli`:
 
-| Scenario | Time | Server peak memory |
-| --- | --- | --- |
-| 1,000,000 pairs, empty cache | 8.2 s | 552 MB |
-| same pairs swapped, every string cached | 5.2 s | 552 MB |
-| exact same request again | 0.6 s | 552 MB |
+| Scenario | Time |
+| --- | --- |
+| 1,000,000 pairs, empty cache | 15.0 s |
+| the same request again | 1.6 s |
 
-The output has 2,000,000 words (47 MB). Before the changes below the same
-empty-cache request took 12.8 s with 1,117 MB peak and the cached one 8.6 s. A
-3,000,000-pair request also completed (14.3 s, 1,263 MB peak). Memory grows
-with the request size because the body, the output and the unique strings are
-held in memory, so the practical limit is the available RAM and the client
-timeout (`--timeout`); the numbers will differ on other machines.
+The output has 2,000,000 words and was checked word by word against the uppercase
+input. Memory grows with the request size because the body, the output and the
+unique strings are held in memory, so the practical limit is the available RAM
+and the client timeout (`--timeout`). The numbers will differ on other machines.
+Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared server.
 
 ## Design decisions
 
