@@ -131,6 +131,7 @@ unknown keys in `.env` are ignored.
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLAlchemy database URL |
 | `MAX_LIST_ITEMS` | unlimited | maximum items per list, `413` above it |
 | `MAX_BODY_SIZE` | unlimited | maximum request body in bytes, `413` above it |
+| `MAX_TRANSFORMER_CALLS` | `50` | transformer calls allowed at the same time across all requests |
 
 ```bash
 cp .env.example .env
@@ -182,7 +183,8 @@ Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared serv
   shared between payloads is never transformed again.
 - **Minimal transformer calls.** Only unique strings that are not yet cached are
   transformed, by 10 workers per request that take strings from a shared queue,
-  so memory does not grow with the number of strings.
+  so memory does not grow with the number of strings. All requests together make
+  at most `MAX_TRANSFORMER_CALLS` (default 50) transformer calls at the same time.
 - **Async SQLAlchemy.** The service uses `AsyncSession` with aiosqlite so
   requests do not block the event loop.
 
@@ -197,4 +199,3 @@ Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared serv
 - No cache eviction or TTL.
 - SQLite file database only; inserts use SQLite's `ON CONFLICT DO NOTHING`, so another database would need its own insert statement.
 - Tables are created at startup, without migrations.
-- The concurrency limit is per request, not global.
