@@ -6,8 +6,7 @@ from itertools import batched
 
 from app.dtos import PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError, TransformerError
-from app.infrastructure.unit_of_work import UnitOfWork
-from app.services.interfaces import Transformer
+from app.services.interfaces import StorageUnitOfWork, Transformer
 
 SAVE_BATCH_SIZE = 10_000
 DEFAULT_MAX_CONCURRENCY = 10
@@ -18,7 +17,7 @@ DEFAULT_TRANSFORM_ATTEMPTS = 2
 class PayloadService:
     def __init__(
         self,
-        unit_of_work: UnitOfWork,
+        unit_of_work: StorageUnitOfWork,
         transformer: Transformer,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         transform_timeout: float = DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
