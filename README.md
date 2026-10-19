@@ -132,6 +132,7 @@ unknown keys in `.env` are ignored.
 | `MAX_LIST_ITEMS` | unlimited | maximum items per list, `413` above it |
 | `MAX_BODY_SIZE` | unlimited | maximum request body in bytes, `413` above it |
 | `MAX_TRANSFORMER_CALLS` | `50` | transformer calls allowed at the same time across all requests |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 
 ```bash
 cp .env.example .env
@@ -187,6 +188,15 @@ Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared serv
   at most `MAX_TRANSFORMER_CALLS` (default 50) transformer calls at the same time.
 - **Async SQLAlchemy.** The service uses `AsyncSession` with aiosqlite so
   requests do not block the event loop.
+
+## Logging
+
+The service logs with the standard `logging` module. At `INFO` it reports, per
+request, whether the payload already existed and how many strings were cache hits
+and how many had to be transformed. Failed transformer attempts are logged as
+warnings, and giving up on a string as an error. `DEBUG` adds one line for every
+transformer call, every shared call and every batch saved, which is a lot of
+output for large requests.
 
 ## Known shortcuts
 
