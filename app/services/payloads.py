@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
 import json
+import logging
 from collections.abc import Iterator
 from itertools import batched
 
 from app.dtos import PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError, TransformerError
 from app.services.interfaces import StorageUnitOfWork, Transformer
+
+logger = logging.getLogger(__name__)
 
 SAVE_BATCH_SIZE = 10_000
 DEFAULT_MAX_CONCURRENCY = 10
@@ -38,6 +41,7 @@ class PayloadService:
             raise ValueError("Lists must have the same length")
         payload_id = self._compute_payload_id(list_1, list_2)
         if await self._payload_exists(payload_id):
+            logger.info("Payload %s already exists, reusing it", payload_id)
             return payload_id
         strings = self._interleave(list_1, list_2)
         mapping = await self._transform_all(strings)
@@ -59,6 +63,7 @@ class PayloadService:
     async def _transform_all(self, strings: list[str]) -> dict[str, str]:
         cached = await self._load_cached(strings)
         missing = [text for text in dict.fromkeys(strings) if text not in cached]
+        logger.info("Cache: %d hits, %d to transform", len(cached), len(missing))
         return cached | await self._transform_missing(missing)
 
     async def _load_cached(self, strings: list[str]) -> dict[str, str]:
@@ -111,6 +116,7 @@ class PayloadService:
     async def _transform_with_retries(self, text: str) -> str:
         attempts_left = self._transform_attempts
         while True:
+            logger.debug("Transforming %r", text)
             try:
                 # The limiter is shared by all requests, so the number of calls to
                 # the transformer stays bounded however many requests are running.
@@ -120,10 +126,18 @@ class PayloadService:
                         return await self._transformer.transform(text)
             except Exception as error:
                 attempts_left -= 1
+                logger.warning(
+                    "Transformer failed for %r (%d attempts left): %r",
+                    text[:50],
+                    attempts_left,
+                    error,
+                )
                 if attempts_left == 0:
+                    logger.error("Giving up on %r", text[:50])
                     raise TransformerError(text) from error
 
     async def _save_transformed(self, transformed_by_text: dict[str, str]) -> None:
+        logger.debug("Saving %d transformed strings", len(transformed_by_text))
         async with self._unit_of_work as uow:
             await uow.transformed_strings.add_many(
                 TransformedStringDto(original, transformed)

@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from app.services.interfaces import Transformer
+
+logger = logging.getLogger(__name__)
 
 
 class SingleFlightTransformer(Transformer):
@@ -14,6 +17,7 @@ class SingleFlightTransformer(Transformer):
         # waiter from cancelling the call that the other waiters depend on.
         shared = self._in_flight.get(text)
         if shared is not None:
+            logger.debug("Joining the running call for %r", text)
             return await asyncio.shield(shared)
         shared = asyncio.get_running_loop().create_future()
         self._in_flight[text] = shared

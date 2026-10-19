@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -331,3 +332,51 @@ async def test_failure_keeps_batches_saved_before_it(
         ["a", "b", "c"], ["d", "e", "f"]
     )
     assert healthy.calls == ["e", "c", "f"]
+
+
+async def test_cache_hits_and_misses_are_logged(
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.payloads")
+    service = build_service(session_factory, CountingTransformer())
+    await service.create(["a", "b"], ["c", "d"])
+
+    await service.create(["a", "e"], ["c", "f"])
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "Cache: 0 hits, 4 to transform" in messages
+    assert "Cache: 2 hits, 2 to transform" in messages
+
+
+async def test_repeated_payload_is_logged_as_reused(
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.payloads")
+    service = build_service(session_factory, CountingTransformer())
+    payload_id = await service.create(["a"], ["b"])
+
+    await service.create(["a"], ["b"])
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert f"Payload {payload_id} already exists, reusing it" in messages
+
+
+async def test_transformer_failures_are_logged(
+    session_factory: async_sessionmaker[AsyncSession],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="app.services.payloads")
+    service = build_service(
+        session_factory,
+        FailingTransformer({"bad"}),
+        max_concurrency=1,
+        transform_attempts=2,
+    )
+
+    with pytest.raises(TransformerError):
+        await service.create(["bad"], ["ok"])
+
+    levels = [record.levelname for record in caplog.records]
+    assert levels == ["WARNING", "WARNING", "ERROR"]
