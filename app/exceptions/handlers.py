@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from app.exceptions.errors import (
     DatabaseUnavailableError,
     PayloadNotFoundError,
+    PayloadTooLargeError,
     TransformerError,
 )
 
@@ -29,7 +30,15 @@ def database_unavailable_handler(_: Request, __: Exception) -> JSONResponse:
     )
 
 
+def payload_too_large_handler(_: Request, error: Exception) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+        content={"detail": str(error)},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(PayloadNotFoundError, payload_not_found_handler)
     app.add_exception_handler(TransformerError, transformer_error_handler)
     app.add_exception_handler(DatabaseUnavailableError, database_unavailable_handler)
+    app.add_exception_handler(PayloadTooLargeError, payload_too_large_handler)

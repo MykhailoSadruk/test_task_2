@@ -2,10 +2,18 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from app.config import Settings
+from app.exceptions import PayloadTooLargeError
 from app.infrastructure.transformer import UppercaseTransformer
 from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
+from app.schemas.payloads import PayloadCreateRequest
 from app.services.payloads import PayloadService
+
+
+def get_settings(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
 
 
 def get_unit_of_work(request: Request) -> UnitOfWork:
@@ -23,5 +31,15 @@ def get_payload_service(
     return PayloadService(unit_of_work, transformer)
 
 
+def get_checked_payload(
+    body: PayloadCreateRequest, settings: Settings = Depends(get_settings)
+) -> PayloadCreateRequest:
+    limit = settings.max_list_items
+    if limit is not None and len(body.list_1) > limit:
+        raise PayloadTooLargeError(f"Lists may have at most {limit} items")
+    return body
+
+
 UnitOfWorkDep = Annotated[UnitOfWork, Depends(get_unit_of_work)]
 PayloadServiceDep = Annotated[PayloadService, Depends(get_payload_service)]
+CheckedPayloadDep = Annotated[PayloadCreateRequest, Depends(get_checked_payload)]

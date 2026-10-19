@@ -1,11 +1,7 @@
 from fastapi import APIRouter, status
 
-from app.api.dependencies import PayloadServiceDep
-from app.schemas.payloads import (
-    PayloadCreateRequest,
-    PayloadCreateResponse,
-    PayloadResponse,
-)
+from app.api.dependencies import CheckedPayloadDep, PayloadServiceDep
+from app.schemas.payloads import PayloadCreateResponse, PayloadResponse
 
 router = APIRouter()
 
@@ -16,7 +12,7 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
 )
 async def create_payload(
-    request: PayloadCreateRequest, service: PayloadServiceDep
+    request: CheckedPayloadDep, service: PayloadServiceDep
 ) -> PayloadCreateResponse:
     payload_id = await service.create(request.list_1, request.list_2)
     return PayloadCreateResponse(

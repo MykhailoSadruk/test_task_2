@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.api.dependencies import get_transformer, get_unit_of_work
 from app.infrastructure.unit_of_work import UnitOfWork
+from app.config import Settings
 from app.main import get_app
 from app.services.interfaces import Transformer
 
@@ -38,7 +39,7 @@ def transformer() -> CountingTransformer:
 async def client(
     session_factory: async_sessionmaker[AsyncSession], transformer: CountingTransformer
 ) -> AsyncIterator[AsyncClient]:
-    app = get_app()
+    app = get_app(Settings(_env_file=None))
     app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
     app.dependency_overrides[get_transformer] = lambda: transformer
     async with AsyncClient(
@@ -127,7 +128,7 @@ class BrokenTransformer(Transformer):
 async def test_transformer_failure_returns_502(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    app = get_app()
+    app = get_app(Settings(_env_file=None))
     app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
     app.dependency_overrides[get_transformer] = BrokenTransformer
     async with AsyncClient(
@@ -149,7 +150,7 @@ async def test_health_reports_ok(client: AsyncClient) -> None:
 async def test_health_reports_unavailable_database() -> None:
     engine = create_async_engine("sqlite+aiosqlite:////missing-directory/db.sqlite")
     broken_factory = async_sessionmaker(engine, expire_on_commit=False)
-    app = get_app()
+    app = get_app(Settings(_env_file=None))
     app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(broken_factory)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -159,3 +160,23 @@ async def test_health_reports_unavailable_database() -> None:
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Database unavailable"}
+
+
+async def test_list_limit_from_settings_returns_413(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    app = get_app(Settings(_env_file=None, max_list_items=2))
+    app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as limited_client:
+        within = await limited_client.post(
+            "/payload", json={"list_1": ["a", "b"], "list_2": ["c", "d"]}
+        )
+        over = await limited_client.post(
+            "/payload", json={"list_1": ["a", "b", "c"], "list_2": ["d", "e", "f"]}
+        )
+
+    assert within.status_code == 201
+    assert over.status_code == 413
+    assert over.json() == {"detail": "Lists may have at most 2 items"}

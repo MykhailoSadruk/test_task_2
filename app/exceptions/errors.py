@@ -8,3 +8,7 @@ class TransformerError(Exception):
 
 class DatabaseUnavailableError(Exception):
     pass
+
+
+class PayloadTooLargeError(Exception):
+    pass
