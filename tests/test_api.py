@@ -1,8 +1,9 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_transformer
 from app.infrastructure.database import get_session
@@ -33,44 +34,52 @@ def transformer() -> CountingTransformer:
     return CountingTransformer()
 
 
-@pytest.fixture
-def client(session: Session, transformer: CountingTransformer) -> Iterator[TestClient]:
-    app.dependency_overrides[get_session] = lambda: session
+@pytest_asyncio.fixture
+async def client(
+    session: AsyncSession, transformer: CountingTransformer
+) -> AsyncIterator[AsyncClient]:
+    async def override_session() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_transformer] = lambda: transformer
-    yield TestClient(app)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as async_client:
+        yield async_client
     app.dependency_overrides.clear()
 
 
-def test_sample_payload_round_trip(client: TestClient) -> None:
-    created = client.post("/payload", json=SAMPLE)
+async def test_sample_payload_round_trip(client: AsyncClient) -> None:
+    created = await client.post("/payload", json=SAMPLE)
 
     assert created.status_code == 201
     payload_id = created.json()["id"]
     assert payload_id in created.json()["message"]
-    fetched = client.get(f"/payload/{payload_id}")
+    fetched = await client.get(f"/payload/{payload_id}")
     assert fetched.status_code == 200
     assert fetched.json() == {"output": SAMPLE_OUTPUT}
 
 
-def test_same_input_returns_same_id_without_new_transforms(
-    client: TestClient, transformer: CountingTransformer
+async def test_same_input_returns_same_id_without_new_transforms(
+    client: AsyncClient, transformer: CountingTransformer
 ) -> None:
-    first = client.post("/payload", json=SAMPLE).json()["id"]
+    first = (await client.post("/payload", json=SAMPLE)).json()["id"]
     calls_after_first = len(transformer.calls)
 
-    second = client.post("/payload", json=SAMPLE).json()["id"]
+    second = (await client.post("/payload", json=SAMPLE)).json()["id"]
 
     assert first == second
     assert len(transformer.calls) == calls_after_first
 
 
-def test_shared_strings_are_not_transformed_again(
-    client: TestClient, transformer: CountingTransformer
+async def test_shared_strings_are_not_transformed_again(
+    client: AsyncClient, transformer: CountingTransformer
 ) -> None:
-    client.post("/payload", json=SAMPLE)
+    await client.post("/payload", json=SAMPLE)
     transformer.calls.clear()
 
-    client.post(
+    await client.post(
         "/payload",
         json={"list_1": ["first string", "new"], "list_2": ["last string", "x"]},
     )
@@ -78,14 +87,16 @@ def test_shared_strings_are_not_transformed_again(
     assert sorted(transformer.calls) == ["new", "x"]
 
 
-def test_unequal_lengths_return_422(client: TestClient) -> None:
-    response = client.post("/payload", json={"list_1": ["a", "b"], "list_2": ["c"]})
+async def test_unequal_lengths_return_422(client: AsyncClient) -> None:
+    response = await client.post(
+        "/payload", json={"list_1": ["a", "b"], "list_2": ["c"]}
+    )
 
     assert response.status_code == 422
 
 
-def test_unknown_id_returns_404(client: TestClient) -> None:
-    response = client.get("/payload/unknown")
+async def test_unknown_id_returns_404(client: AsyncClient) -> None:
+    response = await client.get("/payload/unknown")
 
     assert response.status_code == 404
     assert "detail" in response.json()
