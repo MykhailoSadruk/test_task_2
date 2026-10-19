@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated
 
 from fastapi import Depends, Request
@@ -16,6 +17,11 @@ def get_settings(request: Request) -> Settings:
     return settings
 
 
+def get_transformer_limiter(request: Request) -> asyncio.Semaphore:
+    limiter: asyncio.Semaphore = request.app.state.transformer_limiter
+    return limiter
+
+
 def get_unit_of_work(request: Request) -> UnitOfWork:
     return UnitOfWork(request.app.state.session_factory)
 
@@ -27,8 +33,11 @@ def get_transformer() -> Transformer:
 def get_payload_service(
     unit_of_work: UnitOfWork = Depends(get_unit_of_work),
     transformer: Transformer = Depends(get_transformer),
+    transformer_limiter: asyncio.Semaphore = Depends(get_transformer_limiter),
 ) -> PayloadService:
-    return PayloadService(unit_of_work, transformer)
+    return PayloadService(
+        unit_of_work, transformer, transformer_limiter=transformer_limiter
+    )
 
 
 def get_checked_payload(

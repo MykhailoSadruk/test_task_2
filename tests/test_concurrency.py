@@ -59,3 +59,40 @@ async def test_many_writers_with_different_payloads(tmp_path: Path) -> None:
         words = output.split(", ")
         assert len(words) == 600
         assert words[0] == f"W{worker} A0"
+
+
+class InFlightTransformer(Transformer):
+    def __init__(self) -> None:
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    async def transform(self, text: str) -> str:
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        await asyncio.sleep(0.001)
+        self.in_flight -= 1
+        return text.upper()
+
+
+async def test_transformer_limit_is_shared_between_requests(tmp_path: Path) -> None:
+    engine = create_database_engine(f"sqlite+aiosqlite:///{tmp_path / 'limit.db'}")
+    await create_tables(engine)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    transformer = InFlightTransformer()
+    limiter = asyncio.Semaphore(3)
+
+    async def create_payload(request: int) -> str:
+        service = PayloadService(
+            UnitOfWork(session_factory),
+            transformer,
+            max_concurrency=10,
+            transformer_limiter=limiter,
+        )
+        list_1 = [f"r{request} a{index}" for index in range(40)]
+        list_2 = [f"r{request} b{index}" for index in range(40)]
+        return await service.create(list_1, list_2)
+
+    await asyncio.gather(*(create_payload(request) for request in range(5)))
+    await engine.dispose()
+
+    assert transformer.max_in_flight == 3

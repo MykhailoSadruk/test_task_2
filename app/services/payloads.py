@@ -23,12 +23,16 @@ class PayloadService:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         transform_timeout: float = DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
         transform_attempts: int = DEFAULT_TRANSFORM_ATTEMPTS,
+        transformer_limiter: asyncio.Semaphore | None = None,
     ) -> None:
         self._unit_of_work = unit_of_work
         self._transformer = transformer
         self._max_concurrency = max_concurrency
         self._transform_timeout = transform_timeout
         self._transform_attempts = transform_attempts
+        self._transformer_limiter = transformer_limiter or asyncio.Semaphore(
+            max_concurrency
+        )
 
     async def create(self, list_1: list[str], list_2: list[str]) -> str:
         if len(list_1) != len(list_2):
@@ -109,8 +113,12 @@ class PayloadService:
         attempts_left = self._transform_attempts
         while True:
             try:
-                async with asyncio.timeout(self._transform_timeout):
-                    return await self._transformer.transform(text)
+                # The limiter is shared by all requests, so the number of calls to
+                # the transformer stays bounded however many requests are running.
+                # Waiting for it is not counted against the call timeout.
+                async with self._transformer_limiter:
+                    async with asyncio.timeout(self._transform_timeout):
+                        return await self._transformer.transform(text)
             except Exception as error:
                 attempts_left -= 1
                 if attempts_left == 0:

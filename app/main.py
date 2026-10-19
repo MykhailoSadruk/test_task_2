@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def get_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Payload service", lifespan=lifespan)
     app.state.settings = settings or Settings()
+    app.state.transformer_limiter = asyncio.Semaphore(
+        app.state.settings.max_transformer_calls
+    )
     app.add_middleware(
         BodySizeLimitMiddleware, max_body_size=app.state.settings.max_body_size
     )
