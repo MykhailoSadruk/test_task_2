@@ -120,3 +120,24 @@ async def test_very_long_string_is_accepted(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 201
+
+
+class BrokenTransformer(Transformer):
+    async def transform(self, text: str) -> str:
+        raise RuntimeError(text)
+
+
+async def test_transformer_failure_returns_502(session: AsyncSession) -> None:
+    async def override_session() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    app = get_app()
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_transformer] = BrokenTransformer
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as broken_client:
+        response = await broken_client.post("/payload", json=SAMPLE)
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Transformer service failed"}
