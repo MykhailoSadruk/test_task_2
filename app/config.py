@@ -10,3 +10,4 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./cache.db"
     max_list_items: int | None = Field(None, ge=1)
     max_body_size: int | None = Field(None, ge=1)
+    max_transformer_calls: int = Field(50, ge=1)

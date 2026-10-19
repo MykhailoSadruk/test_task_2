@@ -14,6 +14,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "DATABASE_URL",
         "MAX_LIST_ITEMS",
         "MAX_BODY_SIZE",
+        "MAX_TRANSFORMER_CALLS",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -111,3 +112,13 @@ def test_limits_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_transformer_call_limit_default_and_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings(_env_file=None).max_transformer_calls == 50
+
+    monkeypatch.setenv("MAX_TRANSFORMER_CALLS", "7")
+
+    assert Settings(_env_file=None).max_transformer_calls == 7
