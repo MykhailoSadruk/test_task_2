@@ -10,6 +10,8 @@ from app.infrastructure.repositories import (
 )
 from app.services.interfaces import Transformer
 
+DEFAULT_MAX_CONCURRENCY = 10
+
 
 class PayloadService:
     def __init__(
@@ -17,10 +19,12 @@ class PayloadService:
         payloads: PayloadRepository,
         transformed_strings: TransformedStringRepository,
         transformer: Transformer,
+        max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     ) -> None:
         self._payloads = payloads
         self._transformed_strings = transformed_strings
         self._transformer = transformer
+        self._max_concurrency = max_concurrency
 
     async def create(self, list_1: list[str], list_2: list[str]) -> str:
         if len(list_1) != len(list_2):
@@ -47,8 +51,9 @@ class PayloadService:
             for entry in await self._transformed_strings.get_many(unique)
         }
         pending = [text for text in unique if text not in mapping]
+        semaphore = asyncio.Semaphore(self._max_concurrency)
         transformed = await asyncio.gather(
-            *(self._transformer.transform(text) for text in pending)
+            *(self._transform_limited(semaphore, text) for text in pending)
         )
         new_entries = [
             TransformedStringDto(text, result)
@@ -57,6 +62,10 @@ class PayloadService:
         await self._transformed_strings.add_many(new_entries)
         mapping.update({entry.original: entry.transformed for entry in new_entries})
         return mapping
+
+    async def _transform_limited(self, semaphore: asyncio.Semaphore, text: str) -> str:
+        async with semaphore:
+            return await self._transformer.transform(text)
 
     @staticmethod
     def _compute_payload_id(list_1: list[str], list_2: list[str]) -> str:

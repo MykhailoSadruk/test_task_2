@@ -115,3 +115,30 @@ async def test_unique_strings_are_transformed_concurrently(
         payload_id = await service.create(["a", "b"], ["c", "d"])
 
     assert await service.get_output(payload_id) == "A, C, B, D"
+
+
+class InFlightTransformer(Transformer):
+    def __init__(self) -> None:
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    async def transform(self, text: str) -> str:
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        await asyncio.sleep(0)
+        self.in_flight -= 1
+        return text.upper()
+
+
+async def test_concurrency_is_limited(session: AsyncSession) -> None:
+    transformer = InFlightTransformer()
+    service = PayloadService(
+        PayloadRepository(session),
+        TransformedStringRepository(session),
+        transformer,
+        max_concurrency=2,
+    )
+
+    await service.create(["a", "b", "c"], ["d", "e", "f"])
+
+    assert transformer.max_in_flight == 2
