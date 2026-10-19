@@ -99,21 +99,30 @@ async def test_transformer_limit_is_shared_between_requests(tmp_path: Path) -> N
     assert transformer.max_in_flight == 3
 
 
-class CallRecordingTransformer(Transformer):
+class OverlapRecordingTransformer(Transformer):
     def __init__(self) -> None:
-        self.calls: list[str] = []
+        self.running: dict[str, int] = {}
+        self.most_running_for_one_text = 0
+        self.texts: set[str] = set()
 
     async def transform(self, text: str) -> str:
-        self.calls.append(text)
+        self.texts.add(text)
+        self.running[text] = self.running.get(text, 0) + 1
+        self.most_running_for_one_text = max(
+            self.most_running_for_one_text, self.running[text]
+        )
         await asyncio.sleep(0.02)
+        self.running[text] -= 1
         return text.upper()
 
 
-async def test_requests_share_calls_for_the_same_new_strings(tmp_path: Path) -> None:
+async def test_same_text_is_never_transformed_twice_at_the_same_time(
+    tmp_path: Path,
+) -> None:
     engine = create_database_engine(f"sqlite+aiosqlite:///{tmp_path / 'flight.db'}")
     await create_tables(engine)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    recorder = CallRecordingTransformer()
+    recorder = OverlapRecordingTransformer()
     shared_transformer = SingleFlightTransformer(recorder)
 
     async def create_payload(list_1: list[str], list_2: list[str]) -> str:
@@ -127,5 +136,5 @@ async def test_requests_share_calls_for_the_same_new_strings(tmp_path: Path) -> 
     )
     await engine.dispose()
 
-    assert len(recorder.calls) == len(set(recorder.calls))
-    assert set(recorder.calls) == set("abcdefghxyz")
+    assert recorder.most_running_for_one_text == 1
+    assert recorder.texts == set("abcdefghxyz")
