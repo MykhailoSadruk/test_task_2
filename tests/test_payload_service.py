@@ -45,7 +45,7 @@ async def test_transform_uppercases_text() -> None:
 
 
 async def test_output_is_interleaved(service: PayloadService) -> None:
-    payload_id = await service.create(["a", "b"], ["x", "y"])
+    payload_id = (await service.create(["a", "b"], ["x", "y"])).id
 
     assert await service.get_output(payload_id) == "A, X, B, Y"
 
@@ -64,10 +64,10 @@ async def test_cache_is_reused_across_payloads(
 async def test_repeated_payload_does_not_call_transformer(
     service: PayloadService, transformer: CountingTransformer
 ) -> None:
-    first_id = await service.create(["a"], ["b"])
+    first_id = (await service.create(["a"], ["b"])).id
     transformer.calls.clear()
 
-    second_id = await service.create(["a"], ["b"])
+    second_id = (await service.create(["a"], ["b"])).id
 
     assert second_id == first_id
     assert transformer.calls == []
@@ -76,7 +76,7 @@ async def test_repeated_payload_does_not_call_transformer(
 async def test_duplicate_strings_are_transformed_once(
     service: PayloadService, transformer: CountingTransformer
 ) -> None:
-    payload_id = await service.create(["a", "a"], ["a", "b"])
+    payload_id = (await service.create(["a", "a"], ["a", "b"])).id
 
     assert sorted(transformer.calls) == ["a", "b"]
     assert await service.get_output(payload_id) == "A, A, A, B"
@@ -115,7 +115,7 @@ async def test_unique_strings_are_transformed_concurrently(
     )
 
     async with asyncio.timeout(2):
-        payload_id = await service.create(["a", "b"], ["c", "d"])
+        payload_id = (await service.create(["a", "b"], ["c", "d"])).id
 
     assert await service.get_output(payload_id) == "A, C, B, D"
 
@@ -266,7 +266,7 @@ async def test_transient_failure_is_retried(
     transformer = FlakyTransformer()
     service = build_service(session_factory, transformer, transform_attempts=2)
 
-    payload_id = await service.create(["a"], ["b"])
+    payload_id = (await service.create(["a"], ["b"])).id
 
     assert await service.get_output(payload_id) == "A, B"
     assert sorted(transformer.calls) == ["a", "a", "b", "b"]
@@ -355,7 +355,7 @@ async def test_repeated_payload_is_logged_as_reused(
 ) -> None:
     caplog.set_level(logging.INFO, logger="app.services.payloads")
     service = build_service(session_factory, CountingTransformer())
-    payload_id = await service.create(["a"], ["b"])
+    payload_id = (await service.create(["a"], ["b"])).id
 
     await service.create(["a"], ["b"])
 

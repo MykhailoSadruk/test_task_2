@@ -71,10 +71,12 @@ async def test_service_works_with_in_memory_storage() -> None:
     transformer = CountingTransformer()
     service = PayloadService(unit_of_work, transformer)
 
-    payload_id = await service.create(["a", "b"], ["c", "d"])
-    same_id = await service.create(["a", "b"], ["c", "d"])
+    first = await service.create(["a", "b"], ["c", "d"])
+    second = await service.create(["a", "b"], ["c", "d"])
 
-    assert same_id == payload_id
+    payload_id = first.id
+    assert (first.created, second.created) == (True, False)
+    assert second.id == payload_id
     assert await service.get_output(payload_id) == "A, C, B, D"
     assert sorted(transformer.calls) == ["a", "b", "c", "d"]
     assert unit_of_work.commits == 2

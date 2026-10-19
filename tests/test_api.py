@@ -222,3 +222,14 @@ async def test_body_size_limit_counts_streamed_bytes(
         )
 
     assert response.status_code == 413
+
+
+async def test_new_payload_returns_201_and_existing_returns_200(
+    client: AsyncClient,
+) -> None:
+    first = await client.post("/payload", json=SAMPLE)
+    second = await client.post("/payload", json=SAMPLE)
+
+    assert first.status_code == 201
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]

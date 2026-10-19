@@ -5,7 +5,7 @@ import logging
 from collections.abc import Iterator
 from itertools import batched
 
-from app.dtos import PayloadDto, TransformedStringDto
+from app.dtos import PayloadCreationDto, PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError, TransformerError
 from app.services.interfaces import StorageUnitOfWork, Transformer
 
@@ -36,18 +36,18 @@ class PayloadService:
             max_concurrency
         )
 
-    async def create(self, list_1: list[str], list_2: list[str]) -> str:
+    async def create(self, list_1: list[str], list_2: list[str]) -> PayloadCreationDto:
         if len(list_1) != len(list_2):
             raise ValueError("Lists must have the same length")
         payload_id = self._compute_payload_id(list_1, list_2)
         if await self._payload_exists(payload_id):
             logger.info("Payload %s already exists, reusing it", payload_id)
-            return payload_id
+            return PayloadCreationDto(payload_id, created=False)
         strings = self._interleave(list_1, list_2)
         mapping = await self._transform_all(strings)
         output = ", ".join(mapping[text] for text in strings)
         await self._save_payload(PayloadDto(id=payload_id, output=output))
-        return payload_id
+        return PayloadCreationDto(payload_id, created=True)
 
     async def get_output(self, payload_id: str) -> str:
         async with self._unit_of_work as uow:

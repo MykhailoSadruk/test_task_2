@@ -32,7 +32,7 @@ async def test_identical_payloads_created_concurrently(tmp_path: Path) -> None:
 
     async def create_payload() -> str:
         service = PayloadService(UnitOfWork(session_factory), SlowTransformer())
-        return await service.create(LIST_1, LIST_2)
+        return (await service.create(LIST_1, LIST_2)).id
 
     ids = await asyncio.gather(*(create_payload() for _ in range(5)))
     await engine.dispose()
@@ -49,7 +49,7 @@ async def test_many_writers_with_different_payloads(tmp_path: Path) -> None:
         list_1 = [f"w{worker} a{index}" for index in range(300)]
         list_2 = [f"w{worker} b{index}" for index in range(300)]
         service = PayloadService(UnitOfWork(session_factory), QuickTransformer())
-        payload_id = await service.create(list_1, list_2)
+        payload_id = (await service.create(list_1, list_2)).id
         return worker, payload_id, await service.get_output(payload_id)
 
     results = await asyncio.gather(*(create_payload(worker) for worker in range(20)))
@@ -91,7 +91,7 @@ async def test_transformer_limit_is_shared_between_requests(tmp_path: Path) -> N
         )
         list_1 = [f"r{request} a{index}" for index in range(40)]
         list_2 = [f"r{request} b{index}" for index in range(40)]
-        return await service.create(list_1, list_2)
+        return (await service.create(list_1, list_2)).id
 
     await asyncio.gather(*(create_payload(request) for request in range(5)))
     await engine.dispose()
@@ -127,7 +127,7 @@ async def test_same_text_is_never_transformed_twice_at_the_same_time(
 
     async def create_payload(list_1: list[str], list_2: list[str]) -> str:
         service = PayloadService(UnitOfWork(session_factory), shared_transformer)
-        return await service.create(list_1, list_2)
+        return (await service.create(list_1, list_2)).id
 
     await asyncio.gather(
         create_payload(["a", "b", "c"], ["d", "e", "f"]),
