@@ -55,6 +55,9 @@ class PayloadService:
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
+        # Workers share one iterator, so every text is transformed exactly once
+        # and at most max_concurrency calls run at the same time, without
+        # creating one task per text.
         texts_to_transform = iter(texts)
         transformed_by_text: dict[str, str] = {}
         workers = [
@@ -79,6 +82,9 @@ class PayloadService:
 
     @staticmethod
     def _compute_payload_id(list_1: list[str], list_2: list[str]) -> str:
+        # Canonical JSON (no whitespace, raw unicode) depends only on the content,
+        # so identical input always yields the same id and a repeated request can
+        # reuse the stored payload. Hashing keeps the id short for any input size.
         canonical = json.dumps(
             [list_1, list_2], ensure_ascii=False, separators=(",", ":")
         )
