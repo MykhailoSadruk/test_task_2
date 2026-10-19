@@ -13,6 +13,8 @@ from app.infrastructure.database import (
     create_session_factory,
     create_tables,
 )
+from app.infrastructure.transformer import UppercaseTransformer
+from app.services.single_flight import SingleFlightTransformer
 
 
 @asynccontextmanager
@@ -27,6 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def get_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Payload service", lifespan=lifespan)
     app.state.settings = settings or Settings()
+    app.state.transformer = SingleFlightTransformer(UppercaseTransformer())
     app.state.transformer_limiter = asyncio.Semaphore(
         app.state.settings.max_transformer_calls
     )

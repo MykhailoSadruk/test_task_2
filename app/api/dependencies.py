@@ -5,7 +5,6 @@ from fastapi import Depends, Request
 
 from app.config import Settings
 from app.exceptions import PayloadTooLargeError
-from app.infrastructure.transformer import UppercaseTransformer
 from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
 from app.schemas.payloads import PayloadCreateRequest
@@ -26,8 +25,9 @@ def get_unit_of_work(request: Request) -> UnitOfWork:
     return UnitOfWork(request.app.state.session_factory)
 
 
-def get_transformer() -> Transformer:
-    return UppercaseTransformer()
+def get_transformer(request: Request) -> Transformer:
+    transformer: Transformer = request.app.state.transformer
+    return transformer
 
 
 def get_payload_service(
