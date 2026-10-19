@@ -45,8 +45,13 @@ Requires Python 3.12+.
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install .
-uvicorn app.main:get_app --factory --port 8000
+cp .env.example .env             # optional, see Configuration
+python -m app
 ```
+
+`python -m app` starts the server on `APP_HOST:APP_PORT` (default
+`127.0.0.1:8000`). Plain `uvicorn app.main:get_app --factory` also works but
+ignores `APP_HOST` and `APP_PORT`.
 
 ## Run with Docker
 
@@ -55,11 +60,30 @@ docker build -t payload-cache .
 docker run -p 8000:8000 -v payload-cache-data:/data payload-cache
 ```
 
+The image listens on `APP_PORT` (default `8000`). To use another port, pass it
+to the container and publish the same port:
+
+```bash
+docker run -e APP_PORT=8794 -p 8794:8794 -v payload-cache-data:/data payload-cache
+```
+
 Or with Compose, which creates the named volume for you:
 
 ```bash
 docker compose up --build
 ```
+
+Compose reads `APP_PORT` from the shell or from a `.env` file next to
+`docker-compose.yml` and publishes that port, for example:
+
+```bash
+echo "APP_PORT=8794" > .env
+docker compose up --build
+curl http://localhost:8794/docs
+```
+
+Compose passes only `APP_PORT` to the container; `DATABASE_URL` from `.env` is
+not used there, so the database always stays in the `/data` volume.
 
 The database lives in the `/data` volume, so the cache survives container
 restarts and re-creation as long as the same volume is mounted. The container
@@ -92,11 +116,24 @@ The assignment lists `-h` for both host and help. The two cannot share a flag, s
 
 ## Configuration
 
+Settings are read from environment variables and from a `.env` file in the
+working directory. Real environment variables take precedence over `.env`, and
+unknown keys in `.env` are ignored.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `APP_HOST` | `127.0.0.1` | interface the server binds to |
+| `APP_PORT` | `8000` | server port, 1-65535 |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLAlchemy database URL |
 
-The Docker image sets it to `sqlite+aiosqlite:////data/cache.db`.
+```bash
+cp .env.example .env
+python -m app
+```
+
+`.env` is git-ignored; `.env.example` is committed. The Docker image sets
+`APP_HOST=0.0.0.0`, `APP_PORT=8000` and
+`DATABASE_URL=sqlite+aiosqlite:////data/cache.db`.
 
 ## Development
 
