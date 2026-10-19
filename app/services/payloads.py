@@ -1,12 +1,12 @@
 import hashlib
 import json
-from collections.abc import Callable
 
 from app.infrastructure.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
 )
+from app.services.interfaces import Transformer
 
 
 class PayloadNotFoundError(Exception):
@@ -27,7 +27,7 @@ class PayloadService:
         self,
         payloads: PayloadRepository,
         transformed_strings: TransformedStringRepository,
-        transformer: Callable[[str], str],
+        transformer: Transformer,
     ) -> None:
         self._payloads = payloads
         self._transformed_strings = transformed_strings
@@ -57,7 +57,7 @@ class PayloadService:
             for entry in self._transformed_strings.get_many(unique)
         }
         new_entries = [
-            TransformedStringDto(text, self._transformer(text))
+            TransformedStringDto(text, self._transformer.transform(text))
             for text in unique
             if text not in mapping
         ]

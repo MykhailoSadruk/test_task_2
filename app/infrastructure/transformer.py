@@ -1,3 +1,8 @@
-def transform(text: str) -> str:
+from app.services.interfaces import Transformer
+
+
+class UppercaseTransformer(Transformer):
     """Stand-in for the external transformation service."""
-    return text.upper()
+
+    def transform(self, text: str) -> str:
+        return text.upper()

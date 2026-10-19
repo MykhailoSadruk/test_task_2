@@ -5,15 +5,16 @@ from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
 )
-from app.infrastructure.transformer import transform
+from app.infrastructure.transformer import UppercaseTransformer
+from app.services.interfaces import Transformer
 from app.services.payloads import PayloadNotFoundError, PayloadService
 
 
-class CountingTransformer:
+class CountingTransformer(Transformer):
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def __call__(self, text: str) -> str:
+    def transform(self, text: str) -> str:
         self.calls.append(text)
         return text.upper()
 
@@ -33,7 +34,7 @@ def service(session: Session, transformer: CountingTransformer) -> PayloadServic
 
 
 def test_transform_uppercases_text() -> None:
-    assert transform("abc") == "ABC"
+    assert UppercaseTransformer().transform("abc") == "ABC"
 
 
 def test_output_is_interleaved(service: PayloadService) -> None:
