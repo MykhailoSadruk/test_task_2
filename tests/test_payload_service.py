@@ -287,3 +287,47 @@ async def test_timeout_raises_transformer_error(
         await service.create(["a"], ["b"])
 
     assert transformer.calls == ["a", "a"]
+
+
+async def test_results_are_saved_in_batches(
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved_sizes: list[int] = []
+    original_save = PayloadService._save_transformed
+
+    async def spy_save(
+        self: PayloadService, transformed_by_text: dict[str, str]
+    ) -> None:
+        saved_sizes.append(len(transformed_by_text))
+        await original_save(self, transformed_by_text)
+
+    monkeypatch.setattr("app.services.payloads.SAVE_BATCH_SIZE", 2)
+    monkeypatch.setattr(PayloadService, "_save_transformed", spy_save)
+    service = build_service(session_factory, CountingTransformer())
+
+    await service.create(["a", "b", "c"], ["f", "g", "h"])
+
+    assert saved_sizes == [2, 2, 2]
+
+
+async def test_failure_keeps_batches_saved_before_it(
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.services.payloads.SAVE_BATCH_SIZE", 2)
+    failing = build_service(
+        session_factory,
+        FailingTransformer({"e"}),
+        max_concurrency=1,
+        transform_attempts=1,
+    )
+
+    with pytest.raises(TransformerError):
+        await failing.create(["a", "b", "c"], ["d", "e", "f"])
+
+    healthy = CountingTransformer()
+    await build_service(session_factory, healthy).create(
+        ["a", "b", "c"], ["d", "e", "f"]
+    )
+    assert healthy.calls == ["e", "c", "f"]

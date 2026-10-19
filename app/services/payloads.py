@@ -2,12 +2,14 @@ import asyncio
 import hashlib
 import json
 from collections.abc import Iterator
+from itertools import batched
 
 from app.dtos import PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError, TransformerError
 from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
 
+SAVE_BATCH_SIZE = 10_000
 DEFAULT_MAX_CONCURRENCY = 10
 DEFAULT_TRANSFORM_TIMEOUT_SECONDS = 30.0
 DEFAULT_TRANSFORM_ATTEMPTS = 2
@@ -62,14 +64,20 @@ class PayloadService:
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
+        transformed_by_text: dict[str, str] = {}
+        for batch in batched(texts, SAVE_BATCH_SIZE):
+            transformed_by_text |= await self._transform_batch(batch)
+        return transformed_by_text
+
+    async def _transform_batch(self, texts: tuple[str, ...]) -> dict[str, str]:
         texts_to_transform = iter(texts)
         transformed_by_text: dict[str, str] = {}
         try:
             await self._run_workers(texts_to_transform, transformed_by_text)
         finally:
-            # Transformed strings are saved even when a later call fails: the
-            # cache is valid on its own, so the finished work is kept and a retry
-            # of the same request only has to transform what is still missing.
+            # Each batch is saved as soon as it is done, and also when one of its
+            # calls fails. The cache is valid on its own, so finished work is never
+            # lost to a later error and a retry transforms only what is missing.
             await self._save_transformed(transformed_by_text)
         return transformed_by_text
 
