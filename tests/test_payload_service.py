@@ -4,11 +4,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import PayloadNotFoundError, TransformerError
-from app.infrastructure.repositories import (
-    PayloadRepository,
-    TransformedStringRepository,
-)
 from app.infrastructure.transformer import UppercaseTransformer
+from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
 from app.services.payloads import (
     DEFAULT_MAX_CONCURRENCY,
@@ -35,8 +32,7 @@ def transformer() -> CountingTransformer:
 @pytest.fixture
 def service(session: AsyncSession, transformer: CountingTransformer) -> PayloadService:
     return PayloadService(
-        PayloadRepository(session),
-        TransformedStringRepository(session),
+        UnitOfWork(session),
         transformer,
     )
 
@@ -111,8 +107,7 @@ async def test_unique_strings_are_transformed_concurrently(
     session: AsyncSession,
 ) -> None:
     service = PayloadService(
-        PayloadRepository(session),
-        TransformedStringRepository(session),
+        UnitOfWork(session),
         BarrierTransformer(expected_calls=4),
     )
 
@@ -138,8 +133,7 @@ class InFlightTransformer(Transformer):
 async def test_concurrency_is_limited(session: AsyncSession) -> None:
     transformer = InFlightTransformer()
     service = PayloadService(
-        PayloadRepository(session),
-        TransformedStringRepository(session),
+        UnitOfWork(session),
         transformer,
         max_concurrency=2,
     )
@@ -154,8 +148,7 @@ async def test_many_strings_stay_within_concurrency_limit(
 ) -> None:
     transformer = InFlightTransformer()
     service = PayloadService(
-        PayloadRepository(session),
-        TransformedStringRepository(session),
+        UnitOfWork(session),
         transformer,
         max_concurrency=5,
     )
@@ -221,8 +214,7 @@ def build_service(
     transform_attempts: int = DEFAULT_TRANSFORM_ATTEMPTS,
 ) -> PayloadService:
     return PayloadService(
-        PayloadRepository(session),
-        TransformedStringRepository(session),
+        UnitOfWork(session),
         transformer,
         max_concurrency,
         transform_timeout,

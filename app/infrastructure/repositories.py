@@ -46,7 +46,6 @@ class TransformedStringRepository:
             await connection.execute(
                 insert(TransformedString).on_conflict_do_nothing(), rows
             )
-        await self._session.commit()
 
 
 class PayloadRepository:
@@ -67,4 +66,3 @@ class PayloadRepository:
             insert(Payload).on_conflict_do_nothing(),
             {"id": payload.id, "output": payload.output},
         )
-        await self._session.commit()

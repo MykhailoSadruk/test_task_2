@@ -5,10 +5,7 @@ from collections.abc import Iterator
 
 from app.dtos import PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError, TransformerError
-from app.infrastructure.repositories import (
-    PayloadRepository,
-    TransformedStringRepository,
-)
+from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
 
 DEFAULT_MAX_CONCURRENCY = 10
@@ -19,15 +16,13 @@ DEFAULT_TRANSFORM_ATTEMPTS = 2
 class PayloadService:
     def __init__(
         self,
-        payloads: PayloadRepository,
-        transformed_strings: TransformedStringRepository,
+        unit_of_work: UnitOfWork,
         transformer: Transformer,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         transform_timeout: float = DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
         transform_attempts: int = DEFAULT_TRANSFORM_ATTEMPTS,
     ) -> None:
-        self._payloads = payloads
-        self._transformed_strings = transformed_strings
+        self._unit_of_work = unit_of_work
         self._transformer = transformer
         self._max_concurrency = max_concurrency
         self._transform_timeout = transform_timeout
@@ -37,16 +32,19 @@ class PayloadService:
         if len(list_1) != len(list_2):
             raise ValueError("Lists must have the same length")
         payload_id = self._compute_payload_id(list_1, list_2)
-        if await self._payloads.get(payload_id) is not None:
+        if await self._unit_of_work.payloads.get(payload_id) is not None:
             return payload_id
         strings = self._interleave(list_1, list_2)
         mapping = await self._transform_all(strings)
         output = ", ".join(mapping[text] for text in strings)
-        await self._payloads.add(PayloadDto(id=payload_id, output=output))
+        # Separate transaction after the cache is committed: if saving the payload
+        # fails, the transformed strings are already stored.
+        await self._unit_of_work.payloads.add(PayloadDto(id=payload_id, output=output))
+        await self._unit_of_work.commit()
         return payload_id
 
     async def get_output(self, payload_id: str) -> str:
-        payload = await self._payloads.get(payload_id)
+        payload = await self._unit_of_work.payloads.get(payload_id)
         if payload is None:
             raise PayloadNotFoundError(payload_id)
         return payload.output
@@ -57,7 +55,7 @@ class PayloadService:
         return cached | await self._transform_missing(missing)
 
     async def _load_cached(self, strings: list[str]) -> dict[str, str]:
-        entries = await self._transformed_strings.get_many(strings)
+        entries = await self._unit_of_work.transformed_strings.get_many(strings)
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
@@ -108,10 +106,11 @@ class PayloadService:
                     raise TransformerError(text) from error
 
     async def _save_transformed(self, transformed_by_text: dict[str, str]) -> None:
-        await self._transformed_strings.add_many(
+        await self._unit_of_work.transformed_strings.add_many(
             TransformedStringDto(original, transformed)
             for original, transformed in transformed_by_text.items()
         )
+        await self._unit_of_work.commit()
 
     @staticmethod
     def _compute_payload_id(list_1: list[str], list_2: list[str]) -> str:

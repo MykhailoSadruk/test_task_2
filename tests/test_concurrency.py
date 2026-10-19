@@ -4,10 +4,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.infrastructure.database import create_tables
-from app.infrastructure.repositories import (
-    PayloadRepository,
-    TransformedStringRepository,
-)
+from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
 from app.services.payloads import PayloadService
 
@@ -28,8 +25,7 @@ async def test_identical_payloads_created_concurrently(tmp_path: Path) -> None:
     async def create_payload() -> str:
         async with AsyncSession(engine, expire_on_commit=False) as session:
             service = PayloadService(
-                PayloadRepository(session),
-                TransformedStringRepository(session),
+                UnitOfWork(session),
                 SlowTransformer(),
             )
             return await service.create(LIST_1, LIST_2)
