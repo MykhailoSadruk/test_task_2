@@ -167,8 +167,8 @@ local disk, a 30 MB request body, sent with `cache-cli`:
 
 | Scenario | Time |
 | --- | --- |
-| 1,000,000 pairs, empty cache | 17.9 s |
-| the same request again | 1.9 s |
+| 1,000,000 pairs, empty cache | about 15-18 s (three runs) |
+| the same request again | about 1.6-1.9 s |
 
 The output has 2,000,000 words and was checked word by word against the uppercase
 input. Memory grows with the request size because the body, the output and the
