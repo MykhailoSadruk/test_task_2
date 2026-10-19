@@ -1,12 +1,9 @@
-from sqlalchemy.dialects import registry
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.dtos import PayloadDto, TransformedStringDto
-from app.infrastructure.models import Payload
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
-    insert_ignoring_duplicates,
 )
 
 
@@ -73,14 +70,6 @@ async def test_payload_add_ignores_existing_id(session: AsyncSession) -> None:
     await repository.add(PayloadDto(id="abc", output="changed"))
 
     assert await repository.get("abc") == PayloadDto(id="abc", output="A, B")
-
-
-def test_postgresql_insert_uses_on_conflict_do_nothing() -> None:
-    statement = insert_ignoring_duplicates("postgresql", Payload)
-
-    compiled = str(statement.compile(dialect=registry.load("postgresql")()))
-
-    assert "ON CONFLICT DO NOTHING" in compiled
 
 
 async def test_get_many_with_more_strings_than_one_chunk(

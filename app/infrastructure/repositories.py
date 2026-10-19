@@ -1,22 +1,13 @@
 from collections.abc import Iterable
 
-from sqlalchemy import Insert, select
-from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.models import Payload, TransformedString
 
 LOOKUP_CHUNK_SIZE = 500
-
-
-def insert_ignoring_duplicates(
-    dialect_name: str, model: type[TransformedString] | type[Payload]
-) -> Insert:
-    dialect_insert = (
-        postgresql.insert if dialect_name == "postgresql" else sqlite.insert
-    )
-    return dialect_insert(model).on_conflict_do_nothing()
 
 
 class TransformedStringRepository:
@@ -44,9 +35,8 @@ class TransformedStringRepository:
             for entry in entries
         ]
         if rows:
-            dialect_name = self._session.get_bind().dialect.name
             await self._session.execute(
-                insert_ignoring_duplicates(dialect_name, TransformedString), rows
+                insert(TransformedString).on_conflict_do_nothing(), rows
             )
         await self._session.commit()
 
@@ -62,9 +52,8 @@ class PayloadRepository:
         return PayloadDto(id=payload.id, output=payload.output)
 
     async def add(self, payload: PayloadDto) -> None:
-        dialect_name = self._session.get_bind().dialect.name
         await self._session.execute(
-            insert_ignoring_duplicates(dialect_name, Payload),
+            insert(Payload).on_conflict_do_nothing(),
             {"id": payload.id, "output": payload.output},
         )
         await self._session.commit()
