@@ -81,3 +81,21 @@ def test_postgresql_insert_uses_on_conflict_do_nothing() -> None:
     compiled = str(statement.compile(dialect=registry.load("postgresql")()))
 
     assert "ON CONFLICT DO NOTHING" in compiled
+
+
+async def test_get_many_with_more_strings_than_one_chunk(
+    session: AsyncSession,
+) -> None:
+    entries = {f"s{index}": f"S{index}" for index in range(1_200)}
+    repository = await stored(session, **entries)
+
+    assert as_dict(await repository.get_many(list(entries))) == entries
+
+
+async def test_add_and_get_many_beyond_sqlite_variable_limit(
+    session: AsyncSession,
+) -> None:
+    entries = {f"s{index}": f"S{index}" for index in range(40_000)}
+    repository = await stored(session, **entries)
+
+    assert as_dict(await repository.get_many(list(entries))) == entries
