@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infrastructure.dtos import PayloadDto, TransformedStringDto
+from app.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.models import Payload, TransformedString
 
 LOOKUP_CHUNK_SIZE = 500

@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infrastructure.dtos import PayloadDto, TransformedStringDto
+from app.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
