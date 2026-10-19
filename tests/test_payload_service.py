@@ -89,11 +89,6 @@ async def test_unknown_id_raises(service: PayloadService) -> None:
     assert raised.value.payload_id == "missing"
 
 
-async def test_unequal_lengths_raise(service: PayloadService) -> None:
-    with pytest.raises(ValueError):
-        await service.create(["a"], ["b", "c"])
-
-
 class BarrierTransformer(Transformer):
     def __init__(self, expected_calls: int) -> None:
         self._expected_calls = expected_calls

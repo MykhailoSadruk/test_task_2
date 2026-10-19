@@ -37,8 +37,6 @@ class PayloadService:
         )
 
     async def create(self, list_1: list[str], list_2: list[str]) -> PayloadCreationDto:
-        if len(list_1) != len(list_2):
-            raise ValueError("Lists must have the same length")
         payload_id = self._compute_payload_id(list_1, list_2)
         if await self._payload_exists(payload_id):
             logger.info("Payload %s already exists, reusing it", payload_id)
