@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.models import Payload, TransformedString
 
-LOOKUP_CHUNK_SIZE = 500
+LOOKUP_CHUNK_SIZE = 10_000
+INSERT_CHUNK_SIZE = 10_000
 
 
 class TransformedStringRepository:
@@ -22,19 +23,23 @@ class TransformedStringRepository:
         return found
 
     async def _find(self, originals: tuple[str, ...]) -> list[TransformedStringDto]:
-        statement = select(TransformedString).where(
-            TransformedString.original.in_(originals)
-        )
-        rows = await self._session.scalars(statement)
-        return [TransformedStringDto(row.original, row.transformed) for row in rows]
+        statement = select(
+            TransformedString.original, TransformedString.transformed
+        ).where(TransformedString.original.in_(originals))
+        rows = await self._session.execute(statement)
+        return [
+            TransformedStringDto(original, transformed)
+            for original, transformed in rows
+        ]
 
     async def add_many(self, entries: Iterable[TransformedStringDto]) -> None:
-        rows = [
-            {"original": entry.original, "transformed": entry.transformed}
-            for entry in entries
-        ]
-        if rows:
-            await self._session.execute(
+        connection = await self._session.connection()
+        for chunk in batched(entries, INSERT_CHUNK_SIZE):
+            rows = [
+                {"original": entry.original, "transformed": entry.transformed}
+                for entry in chunk
+            ]
+            await connection.execute(
                 insert(TransformedString).on_conflict_do_nothing(), rows
             )
         await self._session.commit()

@@ -75,7 +75,7 @@ async def test_payload_add_ignores_existing_id(session: AsyncSession) -> None:
 async def test_get_many_with_more_strings_than_one_chunk(
     session: AsyncSession,
 ) -> None:
-    entries = {f"s{index}": f"S{index}" for index in range(1_200)}
+    entries = {f"s{index}": f"S{index}" for index in range(10_500)}
     repository = await stored(session, **entries)
 
     assert as_dict(await repository.get_many(list(entries))) == entries
