@@ -2,7 +2,9 @@ services:
   api:
     build: .
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:${APP_PORT:-8000}"
+    environment:
+      APP_PORT: ${APP_PORT:-8000}
     volumes:
       - cache-data:/data
 

@@ -12,3 +12,4 @@ CLAUDE.md
 *.egg-info
 build
 tests
+.env
