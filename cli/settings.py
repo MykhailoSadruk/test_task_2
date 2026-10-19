@@ -41,6 +41,12 @@ class CliSettings(BaseSettings):
         validation_alias=AliasChoices("r", "repeat"),
         description="number of iterations",
     )
+    timeout: float = Field(
+        600.0,
+        gt=0,
+        validation_alias=AliasChoices("t", "timeout"),
+        description="request timeout in seconds",
+    )
     input: str | None = Field(
         None,
         validation_alias=AliasChoices("i", "input"),

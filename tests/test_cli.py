@@ -116,6 +116,30 @@ def test_not_found_reason_is_reported(server_url: str) -> None:
         client.get_output("nope")
 
 
+def test_timeout_defaults_to_ten_minutes() -> None:
+    assert CliSettings(_cli_parse_args=["-j", PAYLOAD_JSON]).timeout == 600
+
+
+def test_timeout_option_is_parsed() -> None:
+    settings = CliSettings(_cli_parse_args=["-j", PAYLOAD_JSON, "-t", "2.5"])
+
+    assert settings.timeout == 2.5
+
+
+def test_timeout_must_be_positive(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["-j", PAYLOAD_JSON, "--timeout", "0"]) == 2
+    assert "greater than 0" in capsys.readouterr().err
+
+
+def test_request_timeout_is_reported(capsys: pytest.CaptureFixture[str]) -> None:
+    with socket.socket() as silent:
+        silent.bind(("127.0.0.1", 0))
+        silent.listen()
+        url = f"http://127.0.0.1:{silent.getsockname()[1]}"
+        assert main(["-H", url, "-j", PAYLOAD_JSON, "-t", "0.2"]) == 2
+    assert "cannot reach server" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     "argv, message",
     [
