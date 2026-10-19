@@ -21,6 +21,9 @@ SAMPLE_OUTPUT = (
 )
 
 
+SAMPLE_SMALL = {"list_1": ["a"], "list_2": ["b"]}
+
+
 class CountingTransformer(Transformer):
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -180,3 +183,42 @@ async def test_list_limit_from_settings_returns_413(
     assert within.status_code == 201
     assert over.status_code == 413
     assert over.json() == {"detail": "Lists may have at most 2 items"}
+
+
+async def test_body_size_limit_rejects_large_body(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    app = get_app(Settings(_env_file=None, max_body_size=100))
+    app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
+    big = {"list_1": ["a" * 200], "list_2": ["b"]}
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as limited_client:
+        small = await limited_client.post("/payload", json=SAMPLE_SMALL)
+        large = await limited_client.post("/payload", json=big)
+
+    assert small.status_code == 201
+    assert large.status_code == 413
+    assert large.json() == {"detail": "Request body may be at most 100 bytes"}
+
+
+async def test_body_size_limit_counts_streamed_bytes(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    app = get_app(Settings(_env_file=None, max_body_size=100))
+    app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
+
+    async def chunks() -> AsyncIterator[bytes]:
+        yield b'{"list_1": ["' + b"a" * 80
+        yield b"a" * 80 + b'"], "list_2": ["b"]}'
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as limited_client:
+        response = await limited_client.post(
+            "/payload",
+            content=chunks(),
+            headers={"content-type": "application/json"},
+        )
+
+    assert response.status_code == 413

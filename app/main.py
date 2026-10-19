@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api import get_router
+from app.api.middleware import BodySizeLimitMiddleware
 from app.config import Settings
 from app.exceptions.handlers import register_exception_handlers
 from app.infrastructure.database import (
@@ -25,6 +26,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def get_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Payload service", lifespan=lifespan)
     app.state.settings = settings or Settings()
+    app.add_middleware(
+        BodySizeLimitMiddleware, max_body_size=app.state.settings.max_body_size
+    )
     app.include_router(get_router())
     register_exception_handlers(app)
     return app
