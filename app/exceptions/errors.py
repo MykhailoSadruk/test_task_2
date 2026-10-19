@@ -1,0 +1,2 @@
+class PayloadNotFoundError(Exception):
+    pass

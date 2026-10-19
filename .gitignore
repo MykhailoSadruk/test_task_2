@@ -235,3 +235,4 @@ CLAUDE.local.md
 **/CLAUDE.local.md
 .claude/
 .mcp.json
+*.db
