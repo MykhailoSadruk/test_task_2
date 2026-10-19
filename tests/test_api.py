@@ -3,10 +3,10 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api.dependencies import get_transformer
-from app.infrastructure.database import get_session
+from app.api.dependencies import get_transformer, get_unit_of_work
+from app.infrastructure.unit_of_work import UnitOfWork
 from app.main import get_app
 from app.services.interfaces import Transformer
 
@@ -36,13 +36,10 @@ def transformer() -> CountingTransformer:
 
 @pytest_asyncio.fixture
 async def client(
-    session: AsyncSession, transformer: CountingTransformer
+    session_factory: async_sessionmaker[AsyncSession], transformer: CountingTransformer
 ) -> AsyncIterator[AsyncClient]:
-    async def override_session() -> AsyncIterator[AsyncSession]:
-        yield session
-
     app = get_app()
-    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
     app.dependency_overrides[get_transformer] = lambda: transformer
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
@@ -127,12 +124,11 @@ class BrokenTransformer(Transformer):
         raise RuntimeError(text)
 
 
-async def test_transformer_failure_returns_502(session: AsyncSession) -> None:
-    async def override_session() -> AsyncIterator[AsyncSession]:
-        yield session
-
+async def test_transformer_failure_returns_502(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     app = get_app()
-    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(session_factory)
     app.dependency_overrides[get_transformer] = BrokenTransformer
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"

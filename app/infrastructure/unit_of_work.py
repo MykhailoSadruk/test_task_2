@@ -1,4 +1,6 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Self
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.infrastructure.repositories import (
     PayloadRepository,
@@ -7,10 +9,24 @@ from app.infrastructure.repositories import (
 
 
 class UnitOfWork:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-        self.payloads = PayloadRepository(session)
-        self.transformed_strings = TransformedStringRepository(session)
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def __aenter__(self) -> Self:
+        self._session = self._session_factory()
+        self.payloads = PayloadRepository(self._session)
+        self.transformed_strings = TransformedStringRepository(self._session)
+        return self
+
+    async def __aexit__(
+        self, exc_type: type[BaseException] | None, *args: object
+    ) -> None:
+        if exc_type:
+            await self.rollback()
+        await self._session.close()
 
     async def commit(self) -> None:
         await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()

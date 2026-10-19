@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.exceptions import PayloadNotFoundError, TransformerError
 from app.infrastructure.transformer import UppercaseTransformer
@@ -30,9 +30,11 @@ def transformer() -> CountingTransformer:
 
 
 @pytest.fixture
-def service(session: AsyncSession, transformer: CountingTransformer) -> PayloadService:
+def service(
+    session_factory: async_sessionmaker[AsyncSession], transformer: CountingTransformer
+) -> PayloadService:
     return PayloadService(
-        UnitOfWork(session),
+        UnitOfWork(session_factory),
         transformer,
     )
 
@@ -104,10 +106,10 @@ class BarrierTransformer(Transformer):
 
 
 async def test_unique_strings_are_transformed_concurrently(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     service = PayloadService(
-        UnitOfWork(session),
+        UnitOfWork(session_factory),
         BarrierTransformer(expected_calls=4),
     )
 
@@ -130,10 +132,12 @@ class InFlightTransformer(Transformer):
         return text.upper()
 
 
-async def test_concurrency_is_limited(session: AsyncSession) -> None:
+async def test_concurrency_is_limited(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     transformer = InFlightTransformer()
     service = PayloadService(
-        UnitOfWork(session),
+        UnitOfWork(session_factory),
         transformer,
         max_concurrency=2,
     )
@@ -144,11 +148,11 @@ async def test_concurrency_is_limited(session: AsyncSession) -> None:
 
 
 async def test_many_strings_stay_within_concurrency_limit(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     transformer = InFlightTransformer()
     service = PayloadService(
-        UnitOfWork(session),
+        UnitOfWork(session_factory),
         transformer,
         max_concurrency=5,
     )
@@ -207,14 +211,14 @@ class SlowTransformer(Transformer):
 
 
 def build_service(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
     transformer: Transformer,
     max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
     transform_timeout: float = DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
     transform_attempts: int = DEFAULT_TRANSFORM_ATTEMPTS,
 ) -> PayloadService:
     return PayloadService(
-        UnitOfWork(session),
+        UnitOfWork(session_factory),
         transformer,
         max_concurrency,
         transform_timeout,
@@ -223,10 +227,10 @@ def build_service(
 
 
 async def test_transformer_failure_raises_and_keeps_finished_work(
-    session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     failing = build_service(
-        session,
+        session_factory,
         FailingTransformer({"bad"}),
         max_concurrency=1,
         transform_attempts=1,
@@ -236,14 +240,16 @@ async def test_transformer_failure_raises_and_keeps_finished_work(
         await failing.create(["a", "bad"], ["b", "c"])
 
     healthy = CountingTransformer()
-    await build_service(session, healthy).create(["a", "bad"], ["b", "c"])
+    await build_service(session_factory, healthy).create(["a", "bad"], ["b", "c"])
     assert healthy.calls == ["bad", "c"]
 
 
-async def test_failure_stops_remaining_workers(session: AsyncSession) -> None:
+async def test_failure_stops_remaining_workers(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     transformer = FailingTransformer({"bad"}, delay=0.01)
     service = build_service(
-        session, transformer, max_concurrency=3, transform_attempts=1
+        session_factory, transformer, max_concurrency=3, transform_attempts=1
     )
     texts = [f"t{index}" for index in range(50)]
 
@@ -253,9 +259,11 @@ async def test_failure_stops_remaining_workers(session: AsyncSession) -> None:
     assert len(transformer.calls) < 50
 
 
-async def test_transient_failure_is_retried(session: AsyncSession) -> None:
+async def test_transient_failure_is_retried(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     transformer = FlakyTransformer()
-    service = build_service(session, transformer, transform_attempts=2)
+    service = build_service(session_factory, transformer, transform_attempts=2)
 
     payload_id = await service.create(["a"], ["b"])
 
@@ -263,10 +271,12 @@ async def test_transient_failure_is_retried(session: AsyncSession) -> None:
     assert sorted(transformer.calls) == ["a", "a", "b", "b"]
 
 
-async def test_timeout_raises_transformer_error(session: AsyncSession) -> None:
+async def test_timeout_raises_transformer_error(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
     transformer = SlowTransformer()
     service = build_service(
-        session,
+        session_factory,
         transformer,
         max_concurrency=1,
         transform_timeout=0.05,

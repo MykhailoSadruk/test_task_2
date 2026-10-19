@@ -32,22 +32,24 @@ class PayloadService:
         if len(list_1) != len(list_2):
             raise ValueError("Lists must have the same length")
         payload_id = self._compute_payload_id(list_1, list_2)
-        if await self._unit_of_work.payloads.get(payload_id) is not None:
+        if await self._payload_exists(payload_id):
             return payload_id
         strings = self._interleave(list_1, list_2)
         mapping = await self._transform_all(strings)
         output = ", ".join(mapping[text] for text in strings)
-        # Separate transaction after the cache is committed: if saving the payload
-        # fails, the transformed strings are already stored.
-        await self._unit_of_work.payloads.add(PayloadDto(id=payload_id, output=output))
-        await self._unit_of_work.commit()
+        await self._save_payload(PayloadDto(id=payload_id, output=output))
         return payload_id
 
     async def get_output(self, payload_id: str) -> str:
-        payload = await self._unit_of_work.payloads.get(payload_id)
+        async with self._unit_of_work as unit_of_work:
+            payload = await unit_of_work.payloads.get(payload_id)
         if payload is None:
             raise PayloadNotFoundError(payload_id)
         return payload.output
+
+    async def _payload_exists(self, payload_id: str) -> bool:
+        async with self._unit_of_work as unit_of_work:
+            return await unit_of_work.payloads.get(payload_id) is not None
 
     async def _transform_all(self, strings: list[str]) -> dict[str, str]:
         cached = await self._load_cached(strings)
@@ -55,7 +57,8 @@ class PayloadService:
         return cached | await self._transform_missing(missing)
 
     async def _load_cached(self, strings: list[str]) -> dict[str, str]:
-        entries = await self._unit_of_work.transformed_strings.get_many(strings)
+        async with self._unit_of_work as unit_of_work:
+            entries = await unit_of_work.transformed_strings.get_many(strings)
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
@@ -106,11 +109,19 @@ class PayloadService:
                     raise TransformerError(text) from error
 
     async def _save_transformed(self, transformed_by_text: dict[str, str]) -> None:
-        await self._unit_of_work.transformed_strings.add_many(
-            TransformedStringDto(original, transformed)
-            for original, transformed in transformed_by_text.items()
-        )
-        await self._unit_of_work.commit()
+        async with self._unit_of_work as unit_of_work:
+            await unit_of_work.transformed_strings.add_many(
+                TransformedStringDto(original, transformed)
+                for original, transformed in transformed_by_text.items()
+            )
+            await unit_of_work.commit()
+
+    async def _save_payload(self, payload: PayloadDto) -> None:
+        # Separate transaction after the cache is committed: if saving the payload
+        # fails, the transformed strings are already stored.
+        async with self._unit_of_work as unit_of_work:
+            await unit_of_work.payloads.add(payload)
+            await unit_of_work.commit()
 
     @staticmethod
     def _compute_payload_id(list_1: list[str], list_2: list[str]) -> str:

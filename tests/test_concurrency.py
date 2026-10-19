@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.infrastructure.database import create_tables
 from app.infrastructure.unit_of_work import UnitOfWork
@@ -22,13 +22,11 @@ async def test_identical_payloads_created_concurrently(tmp_path: Path) -> None:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'race.db'}")
     await create_tables(engine)
 
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
     async def create_payload() -> str:
-        async with AsyncSession(engine, expire_on_commit=False) as session:
-            service = PayloadService(
-                UnitOfWork(session),
-                SlowTransformer(),
-            )
-            return await service.create(LIST_1, LIST_2)
+        service = PayloadService(UnitOfWork(session_factory), SlowTransformer())
+        return await service.create(LIST_1, LIST_2)
 
     ids = await asyncio.gather(*(create_payload() for _ in range(5)))
     await engine.dispose()
