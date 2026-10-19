@@ -6,10 +6,12 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 import uvicorn
 
 from app.main import get_app
+from cli.client import PayloadClient, PayloadClientError
 from cli.main import main
 from cli.settings import CliSettings
 
@@ -102,7 +104,16 @@ def test_rejected_payload_is_reported(
 ) -> None:
     unequal = json.dumps({"list_1": ["a"], "list_2": []})
     assert main(["-H", server_url, "-j", unequal]) == 2
-    assert "failed with status 422" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "failed with status 422: " in error
+    assert "must have the same length" in error
+
+
+def test_not_found_reason_is_reported(server_url: str) -> None:
+    client = PayloadClient(httpx.Client(base_url=server_url))
+
+    with pytest.raises(PayloadClientError, match="status 404: Payload nope not found"):
+        client.get_output("nope")
 
 
 @pytest.mark.parametrize(
