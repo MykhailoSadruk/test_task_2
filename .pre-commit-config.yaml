@@ -22,7 +22,7 @@ repos:
         args: [--strict]
         additional_dependencies:
           - fastapi
-          - sqlmodel
+          - sqlalchemy
           - pydantic-settings
           - httpx
           - pytest
