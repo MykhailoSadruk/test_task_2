@@ -4,3 +4,7 @@ class PayloadNotFoundError(Exception):
 
 class TransformerError(Exception):
     pass
+
+
+class DatabaseUnavailableError(Exception):
+    pass

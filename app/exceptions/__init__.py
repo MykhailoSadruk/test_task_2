@@ -1,3 +1,7 @@
-from app.exceptions.errors import PayloadNotFoundError, TransformerError
+from app.exceptions.errors import (
+    DatabaseUnavailableError,
+    PayloadNotFoundError,
+    TransformerError,
+)
 
-__all__ = ["PayloadNotFoundError", "TransformerError"]
+__all__ = ["DatabaseUnavailableError", "PayloadNotFoundError", "TransformerError"]

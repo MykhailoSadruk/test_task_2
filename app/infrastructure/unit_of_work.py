@@ -1,7 +1,10 @@
 from typing import Self
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.exceptions import DatabaseUnavailableError
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
@@ -30,3 +33,9 @@ class UnitOfWork:
 
     async def rollback(self) -> None:
         await self._session.rollback()
+
+    async def ping(self) -> None:
+        try:
+            await self._session.execute(text("SELECT 1"))
+        except SQLAlchemyError as error:
+            raise DatabaseUnavailableError from error
