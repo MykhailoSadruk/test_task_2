@@ -8,7 +8,13 @@ from app.config import Settings
 
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("APP_HOST", "APP_PORT", "DATABASE_URL"):
+    for name in (
+        "APP_HOST",
+        "APP_PORT",
+        "DATABASE_URL",
+        "MAX_LIST_ITEMS",
+        "MAX_BODY_SIZE",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -78,6 +84,30 @@ def test_unknown_env_file_keys_are_ignored(tmp_path: Path) -> None:
 @pytest.mark.parametrize("port", ["0", "65536", "-1", "abc"])
 def test_invalid_port_is_rejected(port: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_PORT", port)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_limits_are_disabled_by_default() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.max_list_items is None
+    assert settings.max_body_size is None
+
+
+def test_limits_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAX_LIST_ITEMS", "500")
+    monkeypatch.setenv("MAX_BODY_SIZE", "2048")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.max_list_items == 500
+    assert settings.max_body_size == 2048
+
+
+def test_limits_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MAX_LIST_ITEMS", "0")
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
