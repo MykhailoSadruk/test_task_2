@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from itertools import batched
 
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
@@ -15,19 +16,17 @@ class TransformedStringRepository:
         self._session = session
 
     async def get_many(self, strings: Iterable[str]) -> list[TransformedStringDto]:
-        unique = list(dict.fromkeys(strings))
         found: list[TransformedStringDto] = []
-        for start in range(0, len(unique), LOOKUP_CHUNK_SIZE):
-            chunk = unique[start : start + LOOKUP_CHUNK_SIZE]
-            statement = select(TransformedString).where(
-                TransformedString.original.in_(chunk)
-            )
-            entries = await self._session.scalars(statement)
-            found.extend(
-                TransformedStringDto(original=row.original, transformed=row.transformed)
-                for row in entries
-            )
+        for chunk in batched(dict.fromkeys(strings), LOOKUP_CHUNK_SIZE):
+            found.extend(await self._find(chunk))
         return found
+
+    async def _find(self, originals: tuple[str, ...]) -> list[TransformedStringDto]:
+        statement = select(TransformedString).where(
+            TransformedString.original.in_(originals)
+        )
+        rows = await self._session.scalars(statement)
+        return [TransformedStringDto(row.original, row.transformed) for row in rows]
 
     async def add_many(self, entries: Iterable[TransformedStringDto]) -> None:
         rows = [
