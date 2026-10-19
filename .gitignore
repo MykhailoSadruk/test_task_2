@@ -236,3 +236,5 @@ CLAUDE.local.md
 .claude/
 .mcp.json
 *.db
+*.db-wal
+*.db-shm
