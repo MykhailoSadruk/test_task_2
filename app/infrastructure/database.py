@@ -2,12 +2,12 @@ from sqlalchemy import event
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
+    AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.pool import ConnectionPoolEntry
 
-from app.config import Settings
 from app.infrastructure.models import Base
 
 BUSY_TIMEOUT_SECONDS = 30
@@ -30,10 +30,10 @@ def create_database_engine(database_url: str) -> AsyncEngine:
     return engine
 
 
-engine = create_database_engine(Settings().database_url)
-session_factory = async_sessionmaker(engine, expire_on_commit=False)
+def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False)
 
 
-async def create_tables(bind: AsyncEngine = engine) -> None:
+async def create_tables(bind: AsyncEngine) -> None:
     async with bind.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)

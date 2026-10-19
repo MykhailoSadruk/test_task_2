@@ -1,16 +1,15 @@
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
-from app.infrastructure.database import session_factory
 from app.infrastructure.transformer import UppercaseTransformer
 from app.infrastructure.unit_of_work import UnitOfWork
 from app.services.interfaces import Transformer
 from app.services.payloads import PayloadService
 
 
-def get_unit_of_work() -> UnitOfWork:
-    return UnitOfWork(session_factory)
+def get_unit_of_work(request: Request) -> UnitOfWork:
+    return UnitOfWork(request.app.state.session_factory)
 
 
 def get_transformer() -> Transformer:
