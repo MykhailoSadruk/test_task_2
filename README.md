@@ -172,6 +172,6 @@ mypy .
   "transformed at most once" guarantee holds per request, not across requests.
 - The transformer is a simulated uppercase function.
 - No cache eviction or TTL.
-- SQLite file database; PostgreSQL would be used to run several instances.
+- SQLite file database only; inserts use SQLite's `ON CONFLICT DO NOTHING`, so another database would need its own insert statement.
 - Tables are created at startup, without migrations.
 - The concurrency limit is per request, not global.

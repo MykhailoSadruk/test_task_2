@@ -2,8 +2,8 @@ import asyncio
 import hashlib
 import json
 
+from app.dtos import PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError
-from app.infrastructure.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
@@ -45,23 +45,25 @@ class PayloadService:
         return payload.output
 
     async def _transform_all(self, strings: list[str]) -> dict[str, str]:
-        unique = list(dict.fromkeys(strings))
-        mapping = {
-            entry.original: entry.transformed
-            for entry in await self._transformed_strings.get_many(unique)
-        }
-        pending = [text for text in unique if text not in mapping]
+        cached = await self._load_cached(strings)
+        missing = [text for text in dict.fromkeys(strings) if text not in cached]
+        return cached | await self._transform_missing(missing)
+
+    async def _load_cached(self, strings: list[str]) -> dict[str, str]:
+        entries = await self._transformed_strings.get_many(strings)
+        return {entry.original: entry.transformed for entry in entries}
+
+    async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
         semaphore = asyncio.Semaphore(self._max_concurrency)
-        transformed = await asyncio.gather(
-            *(self._transform_limited(semaphore, text) for text in pending)
+        results = await asyncio.gather(
+            *(self._transform_limited(semaphore, text) for text in texts)
         )
-        new_entries = [
-            TransformedStringDto(text, result)
-            for text, result in zip(pending, transformed)
-        ]
-        await self._transformed_strings.add_many(new_entries)
-        mapping.update({entry.original: entry.transformed for entry in new_entries})
-        return mapping
+        created = dict(zip(texts, results))
+        await self._transformed_strings.add_many(
+            TransformedStringDto(original, transformed)
+            for original, transformed in created.items()
+        )
+        return created
 
     async def _transform_limited(self, semaphore: asyncio.Semaphore, text: str) -> str:
         async with semaphore:

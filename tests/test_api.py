@@ -5,7 +5,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_transformer
+from app.api.dependencies import get_transformer
 from app.infrastructure.database import get_session
 from app.main import get_app
 from app.services.interfaces import Transformer

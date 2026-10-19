@@ -1,22 +1,14 @@
 from collections.abc import Iterable
+from itertools import batched
 
-from sqlalchemy import Insert, select
-from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infrastructure.dtos import PayloadDto, TransformedStringDto
+from app.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.models import Payload, TransformedString
 
 LOOKUP_CHUNK_SIZE = 500
-
-
-def insert_ignoring_duplicates(
-    dialect_name: str, model: type[TransformedString] | type[Payload]
-) -> Insert:
-    dialect_insert = (
-        postgresql.insert if dialect_name == "postgresql" else sqlite.insert
-    )
-    return dialect_insert(model).on_conflict_do_nothing()
 
 
 class TransformedStringRepository:
@@ -24,19 +16,17 @@ class TransformedStringRepository:
         self._session = session
 
     async def get_many(self, strings: Iterable[str]) -> list[TransformedStringDto]:
-        unique = list(dict.fromkeys(strings))
         found: list[TransformedStringDto] = []
-        for start in range(0, len(unique), LOOKUP_CHUNK_SIZE):
-            chunk = unique[start : start + LOOKUP_CHUNK_SIZE]
-            statement = select(TransformedString).where(
-                TransformedString.original.in_(chunk)
-            )
-            entries = await self._session.scalars(statement)
-            found.extend(
-                TransformedStringDto(original=row.original, transformed=row.transformed)
-                for row in entries
-            )
+        for chunk in batched(dict.fromkeys(strings), LOOKUP_CHUNK_SIZE):
+            found.extend(await self._find(chunk))
         return found
+
+    async def _find(self, originals: tuple[str, ...]) -> list[TransformedStringDto]:
+        statement = select(TransformedString).where(
+            TransformedString.original.in_(originals)
+        )
+        rows = await self._session.scalars(statement)
+        return [TransformedStringDto(row.original, row.transformed) for row in rows]
 
     async def add_many(self, entries: Iterable[TransformedStringDto]) -> None:
         rows = [
@@ -44,9 +34,8 @@ class TransformedStringRepository:
             for entry in entries
         ]
         if rows:
-            dialect_name = self._session.get_bind().dialect.name
             await self._session.execute(
-                insert_ignoring_duplicates(dialect_name, TransformedString), rows
+                insert(TransformedString).on_conflict_do_nothing(), rows
             )
         await self._session.commit()
 
@@ -62,9 +51,8 @@ class PayloadRepository:
         return PayloadDto(id=payload.id, output=payload.output)
 
     async def add(self, payload: PayloadDto) -> None:
-        dialect_name = self._session.get_bind().dialect.name
         await self._session.execute(
-            insert_ignoring_duplicates(dialect_name, Payload),
+            insert(Payload).on_conflict_do_nothing(),
             {"id": payload.id, "output": payload.output},
         )
         await self._session.commit()

@@ -1,13 +1,13 @@
 from fastapi import APIRouter, status
 
-from app.dependencies import PayloadServiceDep
+from app.api.dependencies import PayloadServiceDep
 from app.schemas.payloads import (
     PayloadCreateRequest,
     PayloadCreateResponse,
     PayloadResponse,
 )
 
-router = APIRouter(prefix="/payload", tags=["payload"])
+router = APIRouter()
 
 
 @router.post(
