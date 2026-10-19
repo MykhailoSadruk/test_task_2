@@ -4,7 +4,7 @@ import json
 from collections.abc import Iterator
 
 from app.dtos import PayloadDto, TransformedStringDto
-from app.exceptions import PayloadNotFoundError
+from app.exceptions import PayloadNotFoundError, TransformerError
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
@@ -12,6 +12,8 @@ from app.infrastructure.repositories import (
 from app.services.interfaces import Transformer
 
 DEFAULT_MAX_CONCURRENCY = 10
+DEFAULT_TRANSFORM_TIMEOUT_SECONDS = 30.0
+DEFAULT_TRANSFORM_ATTEMPTS = 2
 
 
 class PayloadService:
@@ -21,11 +23,15 @@ class PayloadService:
         transformed_strings: TransformedStringRepository,
         transformer: Transformer,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        transform_timeout: float = DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
+        transform_attempts: int = DEFAULT_TRANSFORM_ATTEMPTS,
     ) -> None:
         self._payloads = payloads
         self._transformed_strings = transformed_strings
         self._transformer = transformer
         self._max_concurrency = max_concurrency
+        self._transform_timeout = transform_timeout
+        self._transform_attempts = transform_attempts
 
     async def create(self, list_1: list[str], list_2: list[str]) -> str:
         if len(list_1) != len(list_2):
@@ -55,24 +61,51 @@ class PayloadService:
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
-        # Workers share one iterator, so every text is transformed exactly once
-        # and at most max_concurrency calls run at the same time, without
-        # creating one task per text.
         texts_to_transform = iter(texts)
         transformed_by_text: dict[str, str] = {}
-        workers = [
-            self._transform_until_empty(texts_to_transform, transformed_by_text)
-            for _ in range(self._max_concurrency)
-        ]
-        await asyncio.gather(*workers)
-        await self._save_transformed(transformed_by_text)
+        try:
+            await self._run_workers(texts_to_transform, transformed_by_text)
+        finally:
+            # Transformed strings are saved even when a later call fails: the
+            # cache is valid on its own, so the finished work is kept and a retry
+            # of the same request only has to transform what is still missing.
+            await self._save_transformed(transformed_by_text)
         return transformed_by_text
+
+    async def _run_workers(
+        self, texts_to_transform: Iterator[str], transformed_by_text: dict[str, str]
+    ) -> None:
+        # Workers share one iterator, so every text is transformed exactly once
+        # and at most max_concurrency calls run at the same time, without
+        # creating one task per text. TaskGroup cancels the other workers as soon
+        # as one fails, so a broken transformer is not called for the rest.
+        try:
+            async with asyncio.TaskGroup() as group:
+                for _ in range(self._max_concurrency):
+                    group.create_task(
+                        self._transform_until_empty(
+                            texts_to_transform, transformed_by_text
+                        )
+                    )
+        except ExceptionGroup as failures:
+            raise failures.exceptions[0] from None
 
     async def _transform_until_empty(
         self, texts_to_transform: Iterator[str], transformed_by_text: dict[str, str]
     ) -> None:
         for text in texts_to_transform:
-            transformed_by_text[text] = await self._transformer.transform(text)
+            transformed_by_text[text] = await self._transform_with_retries(text)
+
+    async def _transform_with_retries(self, text: str) -> str:
+        attempts_left = self._transform_attempts
+        while True:
+            try:
+                async with asyncio.timeout(self._transform_timeout):
+                    return await self._transformer.transform(text)
+            except Exception as error:
+                attempts_left -= 1
+                if attempts_left == 0:
+                    raise TransformerError(text) from error
 
     async def _save_transformed(self, transformed_by_text: dict[str, str]) -> None:
         await self._transformed_strings.add_many(

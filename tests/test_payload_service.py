@@ -3,14 +3,19 @@ import asyncio
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import PayloadNotFoundError
+from app.exceptions import PayloadNotFoundError, TransformerError
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
 )
 from app.infrastructure.transformer import UppercaseTransformer
 from app.services.interfaces import Transformer
-from app.services.payloads import PayloadService
+from app.services.payloads import (
+    DEFAULT_MAX_CONCURRENCY,
+    DEFAULT_TRANSFORM_ATTEMPTS,
+    DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
+    PayloadService,
+)
 
 
 class CountingTransformer(Transformer):
@@ -171,3 +176,112 @@ async def test_many_repeated_strings_are_transformed_once(
     await service.create(list_1, list_2)
 
     assert len(transformer.calls) == len(set(transformer.calls)) == 70
+
+
+class FailingTransformer(Transformer):
+    def __init__(self, failing_texts: set[str], delay: float = 0.0) -> None:
+        self.calls: list[str] = []
+        self._failing_texts = failing_texts
+        self._delay = delay
+
+    async def transform(self, text: str) -> str:
+        self.calls.append(text)
+        await asyncio.sleep(self._delay)
+        if text in self._failing_texts:
+            raise RuntimeError(text)
+        return text.upper()
+
+
+class FlakyTransformer(Transformer):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def transform(self, text: str) -> str:
+        self.calls.append(text)
+        if self.calls.count(text) == 1:
+            raise RuntimeError(text)
+        return text.upper()
+
+
+class SlowTransformer(Transformer):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def transform(self, text: str) -> str:
+        self.calls.append(text)
+        await asyncio.sleep(5)
+        return text.upper()
+
+
+def build_service(
+    session: AsyncSession,
+    transformer: Transformer,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+    transform_timeout: float = DEFAULT_TRANSFORM_TIMEOUT_SECONDS,
+    transform_attempts: int = DEFAULT_TRANSFORM_ATTEMPTS,
+) -> PayloadService:
+    return PayloadService(
+        PayloadRepository(session),
+        TransformedStringRepository(session),
+        transformer,
+        max_concurrency,
+        transform_timeout,
+        transform_attempts,
+    )
+
+
+async def test_transformer_failure_raises_and_keeps_finished_work(
+    session: AsyncSession,
+) -> None:
+    failing = build_service(
+        session,
+        FailingTransformer({"bad"}),
+        max_concurrency=1,
+        transform_attempts=1,
+    )
+
+    with pytest.raises(TransformerError):
+        await failing.create(["a", "bad"], ["b", "c"])
+
+    healthy = CountingTransformer()
+    await build_service(session, healthy).create(["a", "bad"], ["b", "c"])
+    assert healthy.calls == ["bad", "c"]
+
+
+async def test_failure_stops_remaining_workers(session: AsyncSession) -> None:
+    transformer = FailingTransformer({"bad"}, delay=0.01)
+    service = build_service(
+        session, transformer, max_concurrency=3, transform_attempts=1
+    )
+    texts = [f"t{index}" for index in range(50)]
+
+    with pytest.raises(TransformerError):
+        await service.create(["bad", *texts], [*texts, "last"])
+
+    assert len(transformer.calls) < 50
+
+
+async def test_transient_failure_is_retried(session: AsyncSession) -> None:
+    transformer = FlakyTransformer()
+    service = build_service(session, transformer, transform_attempts=2)
+
+    payload_id = await service.create(["a"], ["b"])
+
+    assert await service.get_output(payload_id) == "A, B"
+    assert sorted(transformer.calls) == ["a", "a", "b", "b"]
+
+
+async def test_timeout_raises_transformer_error(session: AsyncSession) -> None:
+    transformer = SlowTransformer()
+    service = build_service(
+        session,
+        transformer,
+        max_concurrency=1,
+        transform_timeout=0.05,
+        transform_attempts=2,
+    )
+
+    with pytest.raises(TransformerError):
+        await service.create(["a"], ["b"])
+
+    assert transformer.calls == ["a", "a"]
