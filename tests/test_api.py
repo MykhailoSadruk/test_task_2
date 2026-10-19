@@ -24,7 +24,7 @@ class CountingTransformer(Transformer):
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def transform(self, text: str) -> str:
+    async def transform(self, text: str) -> str:
         self.calls.append(text)
         return text.upper()
 

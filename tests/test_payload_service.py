@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +17,7 @@ class CountingTransformer(Transformer):
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def transform(self, text: str) -> str:
+    async def transform(self, text: str) -> str:
         self.calls.append(text)
         return text.upper()
 
@@ -35,7 +37,7 @@ def service(session: AsyncSession, transformer: CountingTransformer) -> PayloadS
 
 
 async def test_transform_uppercases_text() -> None:
-    assert UppercaseTransformer().transform("abc") == "ABC"
+    assert await UppercaseTransformer().transform("abc") == "ABC"
 
 
 async def test_output_is_interleaved(service: PayloadService) -> None:
@@ -84,3 +86,32 @@ async def test_unknown_id_raises(service: PayloadService) -> None:
 async def test_unequal_lengths_raise(service: PayloadService) -> None:
     with pytest.raises(ValueError):
         await service.create(["a"], ["b", "c"])
+
+
+class BarrierTransformer(Transformer):
+    def __init__(self, expected_calls: int) -> None:
+        self._expected_calls = expected_calls
+        self._started = 0
+        self._all_started = asyncio.Event()
+
+    async def transform(self, text: str) -> str:
+        self._started += 1
+        if self._started == self._expected_calls:
+            self._all_started.set()
+        await self._all_started.wait()
+        return text.upper()
+
+
+async def test_unique_strings_are_transformed_concurrently(
+    session: AsyncSession,
+) -> None:
+    service = PayloadService(
+        PayloadRepository(session),
+        TransformedStringRepository(session),
+        BarrierTransformer(expected_calls=4),
+    )
+
+    async with asyncio.timeout(2):
+        payload_id = await service.create(["a", "b"], ["c", "d"])
+
+    assert await service.get_output(payload_id) == "A, C, B, D"

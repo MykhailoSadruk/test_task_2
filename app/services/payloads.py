@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 
@@ -45,10 +46,13 @@ class PayloadService:
             entry.original: entry.transformed
             for entry in await self._transformed_strings.get_many(unique)
         }
+        pending = [text for text in unique if text not in mapping]
+        transformed = await asyncio.gather(
+            *(self._transformer.transform(text) for text in pending)
+        )
         new_entries = [
-            TransformedStringDto(text, self._transformer.transform(text))
-            for text in unique
-            if text not in mapping
+            TransformedStringDto(text, result)
+            for text, result in zip(pending, transformed)
         ]
         await self._transformed_strings.add_many(new_entries)
         mapping.update({entry.original: entry.transformed for entry in new_entries})
