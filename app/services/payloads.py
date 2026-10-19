@@ -1,16 +1,13 @@
 import hashlib
 import json
 
+from app.exceptions import PayloadNotFoundError
 from app.infrastructure.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
 )
 from app.services.interfaces import Transformer
-
-
-class PayloadNotFoundError(Exception):
-    pass
 
 
 class PayloadService:

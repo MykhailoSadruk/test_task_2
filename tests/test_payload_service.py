@@ -1,13 +1,14 @@
 import pytest
 from sqlalchemy.orm import Session
 
+from app.exceptions import PayloadNotFoundError
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
 )
 from app.infrastructure.transformer import UppercaseTransformer
 from app.services.interfaces import Transformer
-from app.services.payloads import PayloadNotFoundError, PayloadService
+from app.services.payloads import PayloadService
 
 
 class CountingTransformer(Transformer):
