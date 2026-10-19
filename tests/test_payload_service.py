@@ -142,3 +142,32 @@ async def test_concurrency_is_limited(session: AsyncSession) -> None:
     await service.create(["a", "b", "c"], ["d", "e", "f"])
 
     assert transformer.max_in_flight == 2
+
+
+async def test_many_strings_stay_within_concurrency_limit(
+    session: AsyncSession,
+) -> None:
+    transformer = InFlightTransformer()
+    service = PayloadService(
+        PayloadRepository(session),
+        TransformedStringRepository(session),
+        transformer,
+        max_concurrency=5,
+    )
+    list_1 = [f"a{index}" for index in range(500)]
+    list_2 = [f"b{index}" for index in range(500)]
+
+    await service.create(list_1, list_2)
+
+    assert transformer.max_in_flight == 5
+
+
+async def test_many_repeated_strings_are_transformed_once(
+    service: PayloadService, transformer: CountingTransformer
+) -> None:
+    list_1 = [f"s{index % 50}" for index in range(500)]
+    list_2 = [f"s{index % 70}" for index in range(500)]
+
+    await service.create(list_1, list_2)
+
+    assert len(transformer.calls) == len(set(transformer.calls)) == 70
