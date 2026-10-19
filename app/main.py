@@ -22,6 +22,8 @@ def payload_not_found_handler(_: Request, error: Exception) -> JSONResponse:
     )
 
 
-app = FastAPI(title="Payload service", lifespan=lifespan)
-app.include_router(payloads_router)
-app.add_exception_handler(PayloadNotFoundError, payload_not_found_handler)
+def get_app() -> FastAPI:
+    app = FastAPI(title="Payload service", lifespan=lifespan)
+    app.include_router(payloads_router)
+    app.add_exception_handler(PayloadNotFoundError, payload_not_found_handler)
+    return app

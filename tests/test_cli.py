@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 
-from app.main import app
+from app.main import get_app
 from cli.main import main
 
 PAYLOAD = {
@@ -37,7 +37,7 @@ def find_free_port() -> int:
 def server_url() -> Iterator[str]:
     port = find_free_port()
     server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(get_app(), host="127.0.0.1", port=port, log_level="warning")
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
