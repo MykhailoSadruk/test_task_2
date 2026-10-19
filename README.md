@@ -193,11 +193,13 @@ Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared serv
 - Concurrent identical requests are safe: inserts of existing rows are ignored
   (`ON CONFLICT DO NOTHING`), so a burst of 30 parallel identical requests (300
   strings per list) against SQLite all returned `201` with the same id.
-- Requests that need the same new string at the same time share one transformer
-  call (single-flight), so a string is transformed once across concurrent
-  requests. This works inside one server process only; several instances would
-  still transform the same string once each. If the call that others wait for is
-  cancelled, the waiters count it as a failed attempt and retry.
+- Requests that need the same new string while a call for it is running share that
+  call (single-flight), so the same string is never transformed twice at the same
+  time. A request that reads the cache before another request has saved its result
+  can still repeat a call that already finished, so this reduces duplicate calls
+  but does not rule them out. It works inside one server process only. If the call
+  that others wait for is cancelled, the waiters count it as a failed attempt and
+  retry.
 - The transformer is a simulated uppercase function.
 - No cache eviction or TTL.
 - SQLite only: inserts use SQLite's `ON CONFLICT DO NOTHING`, so `DATABASE_URL` must
