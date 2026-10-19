@@ -7,7 +7,7 @@ from app.schemas.payloads import (
     PayloadResponse,
 )
 
-router = APIRouter(prefix="/payload", tags=["payload"])
+router = APIRouter()
 
 
 @router.post(

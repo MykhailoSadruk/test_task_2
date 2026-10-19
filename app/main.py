@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api.payloads import router as payloads_router
+from app.api import get_router
 from app.exceptions.handlers import register_exception_handlers
 from app.infrastructure.database import create_tables
 
@@ -16,6 +16,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def get_app() -> FastAPI:
     app = FastAPI(title="Payload service", lifespan=lifespan)
-    app.include_router(payloads_router)
+    app.include_router(get_router())
     register_exception_handlers(app)
     return app
