@@ -116,9 +116,12 @@ def test_rejected_payload_is_reported(
 
 def test_not_found_reason_is_reported(server_url: str) -> None:
     client = PayloadClient(httpx.Client(base_url=server_url))
+    missing_id = "0" * 64
 
-    with pytest.raises(PayloadClientError, match="status 404: Payload nope not found"):
-        client.get_output("nope")
+    with pytest.raises(
+        PayloadClientError, match=f"status 404: Payload {missing_id} not found"
+    ):
+        client.get_output(missing_id)
 
 
 def test_timeout_defaults_to_ten_minutes() -> None:

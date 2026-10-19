@@ -1,7 +1,11 @@
-from fastapi import APIRouter, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Path, Response, status
 
 from app.api.dependencies import CheckedPayloadDep, PayloadServiceDep
 from app.schemas.payloads import PayloadCreateResponse, PayloadResponse
+
+PAYLOAD_ID_PATTERN = r"^[0-9a-f]{64}$"
 
 router = APIRouter()
 
@@ -23,5 +27,8 @@ async def create_payload(
 
 
 @router.get("/{payload_id}", response_model=PayloadResponse)
-async def get_payload(payload_id: str, service: PayloadServiceDep) -> PayloadResponse:
+async def get_payload(
+    payload_id: Annotated[str, Path(pattern=PAYLOAD_ID_PATTERN)],
+    service: PayloadServiceDep,
+) -> PayloadResponse:
     return PayloadResponse(output=await service.get_output(payload_id))

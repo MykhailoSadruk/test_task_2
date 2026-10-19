@@ -21,6 +21,7 @@ SAMPLE_OUTPUT = (
 )
 
 
+UNKNOWN_ID = "0" * 64
 SAMPLE_SMALL = {"list_1": ["a"], "list_2": ["b"]}
 
 
@@ -97,7 +98,7 @@ async def test_unequal_lengths_return_422(client: AsyncClient) -> None:
 
 
 async def test_unknown_id_returns_404(client: AsyncClient) -> None:
-    response = await client.get("/payload/unknown")
+    response = await client.get(f"/payload/{UNKNOWN_ID}")
 
     assert response.status_code == 404
     assert "detail" in response.json()
@@ -233,3 +234,10 @@ async def test_new_payload_returns_201_and_existing_returns_200(
     assert first.status_code == 201
     assert second.status_code == 200
     assert second.json()["id"] == first.json()["id"]
+
+
+@pytest.mark.parametrize("payload_id", ["unknown", "A" * 64, "0" * 63, "0" * 65])
+async def test_malformed_id_returns_422(client: AsyncClient, payload_id: str) -> None:
+    response = await client.get(f"/payload/{payload_id}")
+
+    assert response.status_code == 422
