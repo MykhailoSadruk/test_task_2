@@ -124,10 +124,11 @@ mypy .
 
 ## Known shortcuts
 
-- No locking: two simultaneous requests with the same new strings or the same new
-  payload can race on inserting the same row. In a test burst of 30 parallel
-  identical requests (300 strings per list) against the Docker container, 14
-  returned `500` with a `UNIQUE constraint failed` error and 16 returned `201`.
+- Concurrent identical requests are safe: inserts of existing rows are ignored
+  (`ON CONFLICT DO NOTHING`), so a burst of 30 parallel identical requests (300
+  strings per list) against SQLite all returned `201` with the same id. Requests
+  that race on the same new string may each call the transformer for it, so the
+  "transformed at most once" guarantee holds per request, not across requests.
 - The transformer is a simulated uppercase function.
 - No cache eviction or TTL.
 - SQLite file database; PostgreSQL would be used to run several instances.
