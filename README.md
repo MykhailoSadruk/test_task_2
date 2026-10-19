@@ -128,7 +128,7 @@ unknown keys in `.env` are ignored.
 | --- | --- | --- |
 | `APP_HOST` | `127.0.0.1` | interface the server binds to |
 | `APP_PORT` | `8000` | server port, 1-65535 |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLAlchemy database URL |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLite URL; any other database is rejected at startup |
 | `MAX_LIST_ITEMS` | unlimited | maximum items per list, `413` above it |
 | `MAX_BODY_SIZE` | unlimited | maximum request body in bytes, `413` above it |
 | `MAX_TRANSFORMER_CALLS` | `50` | transformer calls allowed at the same time across all requests |
@@ -200,5 +200,7 @@ Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared serv
   cancelled, the waiters count it as a failed attempt and retry.
 - The transformer is a simulated uppercase function.
 - No cache eviction or TTL.
-- SQLite file database only; inserts use SQLite's `ON CONFLICT DO NOTHING`, so another database would need its own insert statement.
+- SQLite only: inserts use SQLite's `ON CONFLICT DO NOTHING`, so `DATABASE_URL` must
+  start with `sqlite+aiosqlite:` and the app refuses to start with another URL. Another
+  database would need its own insert statement.
 - Tables are created at startup, without migrations.
