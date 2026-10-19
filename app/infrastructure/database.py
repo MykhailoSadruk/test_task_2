@@ -1,24 +1,39 @@
-from collections.abc import AsyncIterator
-
+from sqlalchemy import event
+from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import ConnectionPoolEntry
 
-from app.config import Settings
 from app.infrastructure.models import Base
 
-engine = create_async_engine(Settings().database_url)
-session_factory = async_sessionmaker(engine, expire_on_commit=False)
+BUSY_TIMEOUT_SECONDS = 30
 
 
-async def create_tables(bind: AsyncEngine = engine) -> None:
+def enable_wal(dbapi_connection: DBAPIConnection, _: ConnectionPoolEntry) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
+
+def create_database_engine(database_url: str) -> AsyncEngine:
+    # SQLite allows one writer at a time. WAL lets readers continue during a
+    # write, and the busy timeout makes a blocked writer wait for the lock
+    # instead of failing at once with "database is locked".
+    engine = create_async_engine(
+        database_url, connect_args={"timeout": BUSY_TIMEOUT_SECONDS}
+    )
+    event.listen(engine.sync_engine, "connect", enable_wal)
+    return engine
+
+
+def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def create_tables(bind: AsyncEngine) -> None:
     async with bind.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-
-
-async def get_session() -> AsyncIterator[AsyncSession]:
-    async with session_factory() as session:
-        yield session

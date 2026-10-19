@@ -10,6 +10,7 @@ import httpx
 import pytest
 import uvicorn
 
+from app.config import Settings
 from app.main import get_app
 from cli.client import PayloadClient, PayloadClientError
 from cli.main import main
@@ -37,10 +38,14 @@ def find_free_port() -> int:
 
 
 @pytest.fixture(scope="module")
-def server_url() -> Iterator[str]:
+def server_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     port = find_free_port()
+    database = tmp_path_factory.mktemp("cli") / "cli.db"
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{database}")
     server = uvicorn.Server(
-        uvicorn.Config(get_app(), host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(
+            get_app(settings), host="127.0.0.1", port=port, log_level="warning"
+        )
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
@@ -111,9 +116,12 @@ def test_rejected_payload_is_reported(
 
 def test_not_found_reason_is_reported(server_url: str) -> None:
     client = PayloadClient(httpx.Client(base_url=server_url))
+    missing_id = "0" * 64
 
-    with pytest.raises(PayloadClientError, match="status 404: Payload nope not found"):
-        client.get_output("nope")
+    with pytest.raises(
+        PayloadClientError, match=f"status 404: Payload {missing_id} not found"
+    ):
+        client.get_output(missing_id)
 
 
 def test_timeout_defaults_to_ten_minutes() -> None:

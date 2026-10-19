@@ -8,10 +8,12 @@ of both lists. Transformed strings and finished payloads are stored in SQLite.
 ## API
 
 `POST /payload` takes two lists of the same length and returns `201` with the
-payload id. A request with lists of different length is rejected with `422`.
+payload id, or `200` with the same id when that payload already exists. A request
+with lists of different length is rejected with `422`.
 
-The input has no size limits on the number of strings or on their length. Empty
-lists are accepted.
+By default the input has no size limit. `MAX_LIST_ITEMS` limits the number of items
+per list and `MAX_BODY_SIZE` limits the request body in bytes (see Configuration);
+a request over either limit is rejected with `413`. Empty lists are accepted.
 
 ```bash
 curl -X POST http://localhost:8000/payload \
@@ -35,6 +37,9 @@ curl http://localhost:8000/payload/db1643219a6c379b295897e1daa542e2a58690ab61fa7
 ```
 
 Interactive docs are served at `http://localhost:8000/docs`.
+
+`GET /health` returns `{"status": "ok"}` after a test query to the database, or `503`
+when the database cannot be reached. The Docker healthcheck uses it.
 
 ## Run locally
 
@@ -78,7 +83,7 @@ Compose reads `APP_PORT` from the shell or from a `.env` file next to
 ```bash
 echo "APP_PORT=8794" > .env
 docker compose up --build
-curl http://localhost:8794/docs
+curl http://localhost:8794/health
 ```
 
 Compose passes only `APP_PORT` to the container; `DATABASE_URL` from `.env` is
@@ -124,7 +129,11 @@ unknown keys in `.env` are ignored.
 | --- | --- | --- |
 | `APP_HOST` | `127.0.0.1` | interface the server binds to |
 | `APP_PORT` | `8000` | server port, 1-65535 |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLAlchemy database URL |
+| `DATABASE_URL` | `sqlite+aiosqlite:///./cache.db` | async SQLite URL; any other database is rejected at startup |
+| `MAX_LIST_ITEMS` | unlimited | maximum items per list, `413` above it |
+| `MAX_BODY_SIZE` | unlimited | maximum request body in bytes, `413` above it |
+| `MAX_TRANSFORMER_CALLS` | `50` | transformer calls allowed at the same time across all requests |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 
 ```bash
 cp .env.example .env
@@ -152,24 +161,20 @@ mypy .
 
 ## Large payloads
 
-There is no input limit, and a request with 1,000,000 pairs (2,000,000 strings)
-works. Measured on one Windows machine with the server and SQLite on a local
-disk, with strings drawn from a pool of 500,000 distinct values (about 490,000
-distinct strings in the request), a 60 MB request body, and the
-`cache-cli` default timeout:
+Without limits, a request with 1,000,000 pairs (2,000,000 strings, about 490,000
+distinct) works. Measured on one Windows machine with the server and SQLite on a
+local disk, a 30 MB request body, sent with `cache-cli`:
 
-| Scenario | Time | Server peak memory |
-| --- | --- | --- |
-| 1,000,000 pairs, empty cache | 8.2 s | 552 MB |
-| same pairs swapped, every string cached | 5.2 s | 552 MB |
-| exact same request again | 0.6 s | 552 MB |
+| Scenario | Time |
+| --- | --- |
+| 1,000,000 pairs, empty cache | about 15-18 s (three runs) |
+| the same request again | about 1.6-1.9 s |
 
-The output has 2,000,000 words (47 MB). Before the changes below the same
-empty-cache request took 12.8 s with 1,117 MB peak and the cached one 8.6 s. A
-3,000,000-pair request also completed (14.3 s, 1,263 MB peak). Memory grows
-with the request size because the body, the output and the unique strings are
-held in memory, so the practical limit is the available RAM and the client
-timeout (`--timeout`); the numbers will differ on other machines.
+The output has 2,000,000 words and was checked word by word against the uppercase
+input. Memory grows with the request size because the body, the output and the
+unique strings are held in memory, so the practical limit is the available RAM
+and the client timeout (`--timeout`). The numbers will differ on other machines.
+Set `MAX_LIST_ITEMS` or `MAX_BODY_SIZE` to cap the request size on a shared server.
 
 ## Design decisions
 
@@ -180,19 +185,35 @@ timeout (`--timeout`); the numbers will differ on other machines.
   shared between payloads is never transformed again.
 - **Minimal transformer calls.** Only unique strings that are not yet cached are
   transformed, by 10 workers per request that take strings from a shared queue,
-  so memory does not grow with the number of strings.
+  so memory does not grow with the number of strings. All requests together make
+  at most `MAX_TRANSFORMER_CALLS` (default 50) transformer calls at the same time.
 - **Async SQLAlchemy.** The service uses `AsyncSession` with aiosqlite so
   requests do not block the event loop.
+
+## Logging
+
+The service logs with the standard `logging` module. At `INFO` it reports, per
+request, whether the payload already existed and how many strings were cache hits
+and how many had to be transformed. Failed transformer attempts are logged as
+warnings, and giving up on a string as an error. `DEBUG` adds one line for every
+transformer call, every shared call and every batch saved, which is a lot of
+output for large requests.
 
 ## Known shortcuts
 
 - Concurrent identical requests are safe: inserts of existing rows are ignored
   (`ON CONFLICT DO NOTHING`), so a burst of 30 parallel identical requests (300
-  strings per list) against SQLite all returned `201` with the same id. Requests
-  that race on the same new string may each call the transformer for it, so the
-  "transformed at most once" guarantee holds per request, not across requests.
+  strings per list) against SQLite all returned a success status with the same id.
+- Requests that need the same new string while a call for it is running share that
+  call (single-flight), so the same string is never transformed twice at the same
+  time. A request that reads the cache before another request has saved its result
+  can still repeat a call that already finished, so this reduces duplicate calls
+  but does not rule them out. It works inside one server process only. If the call
+  that others wait for is cancelled, the waiters count it as a failed attempt and
+  retry.
 - The transformer is a simulated uppercase function.
 - No cache eviction or TTL.
-- SQLite file database only; inserts use SQLite's `ON CONFLICT DO NOTHING`, so another database would need its own insert statement.
+- SQLite only: inserts use SQLite's `ON CONFLICT DO NOTHING`, so `DATABASE_URL` must
+  start with `sqlite+aiosqlite:` and the app refuses to start with another URL. Another
+  database would need its own insert statement.
 - Tables are created at startup, without migrations.
-- The concurrency limit is per request, not global.

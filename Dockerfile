@@ -21,6 +21,6 @@ VOLUME /data
 EXPOSE ${APP_PORT}
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://localhost:' + os.environ['APP_PORT'] + '/docs')"
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://localhost:' + os.environ['APP_PORT'] + '/health')"
 
 CMD ["python", "-m", "app"]
