@@ -102,7 +102,7 @@ async def test_unknown_id_returns_404(client: AsyncClient) -> None:
     assert "detail" in response.json()
 
 
-async def test_maximum_input_is_accepted(client: AsyncClient) -> None:
+async def test_large_input_is_accepted(client: AsyncClient) -> None:
     list_1 = [f"a{index}" for index in range(10_000)]
     list_2 = [f"b{index}" for index in range(10_000)]
 
@@ -114,25 +114,9 @@ async def test_maximum_input_is_accepted(client: AsyncClient) -> None:
     assert fetched.json() == {"output": expected}
 
 
-async def test_too_many_items_return_422(client: AsyncClient) -> None:
-    items = ["a"] * 10_001
-
-    response = await client.post("/payload", json={"list_1": items, "list_2": items})
-
-    assert response.status_code == 422
-
-
-async def test_too_long_string_returns_422(client: AsyncClient) -> None:
+async def test_very_long_string_is_accepted(client: AsyncClient) -> None:
     response = await client.post(
-        "/payload", json={"list_1": ["a" * 1_001], "list_2": ["b"]}
-    )
-
-    assert response.status_code == 422
-
-
-async def test_string_at_length_limit_is_accepted(client: AsyncClient) -> None:
-    response = await client.post(
-        "/payload", json={"list_1": ["a" * 1_000], "list_2": ["b"]}
+        "/payload", json={"list_1": ["a" * 100_000], "list_2": ["b"]}
     )
 
     assert response.status_code == 201

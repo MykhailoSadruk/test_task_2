@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+from collections.abc import Iterator
 
 from app.dtos import PayloadDto, TransformedStringDto
 from app.exceptions import PayloadNotFoundError
@@ -54,20 +55,27 @@ class PayloadService:
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
-        semaphore = asyncio.Semaphore(self._max_concurrency)
-        results = await asyncio.gather(
-            *(self._transform_limited(semaphore, text) for text in texts)
-        )
-        created = dict(zip(texts, results))
+        texts_to_transform = iter(texts)
+        transformed_by_text: dict[str, str] = {}
+        workers = [
+            self._transform_until_empty(texts_to_transform, transformed_by_text)
+            for _ in range(self._max_concurrency)
+        ]
+        await asyncio.gather(*workers)
+        await self._save_transformed(transformed_by_text)
+        return transformed_by_text
+
+    async def _transform_until_empty(
+        self, texts_to_transform: Iterator[str], transformed_by_text: dict[str, str]
+    ) -> None:
+        for text in texts_to_transform:
+            transformed_by_text[text] = await self._transformer.transform(text)
+
+    async def _save_transformed(self, transformed_by_text: dict[str, str]) -> None:
         await self._transformed_strings.add_many(
             TransformedStringDto(original, transformed)
-            for original, transformed in created.items()
+            for original, transformed in transformed_by_text.items()
         )
-        return created
-
-    async def _transform_limited(self, semaphore: asyncio.Semaphore, text: str) -> str:
-        async with semaphore:
-            return await self._transformer.transform(text)
 
     @staticmethod
     def _compute_payload_id(list_1: list[str], list_2: list[str]) -> str:

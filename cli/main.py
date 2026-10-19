@@ -10,8 +10,6 @@ from pydantic_core import ErrorDetails
 from cli.client import PayloadClient, PayloadClientError
 from cli.settings import CliSettings, PayloadInput
 
-REQUEST_TIMEOUT_SECONDS = 30.0
-
 
 def describe_issue(issue: ErrorDetails) -> str:
     location = ".".join(map(str, issue["loc"]))
@@ -32,7 +30,7 @@ def open_output(path: str) -> Iterator[TextIO]:
 
 
 def run(settings: CliSettings, payload: PayloadInput) -> None:
-    http = httpx.Client(base_url=str(settings.host), timeout=REQUEST_TIMEOUT_SECONDS)
+    http = httpx.Client(base_url=str(settings.host), timeout=settings.timeout)
     with http, open_output(settings.output) as output:
         client = PayloadClient(http)
         for _ in range(settings.repeat):

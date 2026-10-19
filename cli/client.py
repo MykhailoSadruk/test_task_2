@@ -37,10 +37,21 @@ class PayloadClient:
         except httpx.HTTPStatusError as error:
             raise PayloadClientError(
                 f"{method} {path} failed with status {error.response.status_code}"
+                f"{self._reason(error.response)}"
             ) from error
         except httpx.HTTPError as error:
             raise PayloadClientError(f"cannot reach server: {error}") from error
         return response
+
+    @staticmethod
+    def _reason(response: httpx.Response) -> str:
+        try:
+            detail = response.json()["detail"]
+        except (ValueError, KeyError, TypeError):
+            return ""
+        if isinstance(detail, list) and detail:
+            detail = detail[0].get("msg") if isinstance(detail[0], dict) else None
+        return f": {detail}" if isinstance(detail, str) and detail else ""
 
     def _parse[T: BaseModel](self, model: type[T], response: httpx.Response) -> T:
         try:

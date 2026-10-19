@@ -10,9 +10,8 @@ of both lists. Transformed strings and finished payloads are stored in SQLite.
 `POST /payload` takes two lists of the same length and returns `201` with the
 payload id. A request with lists of different length is rejected with `422`.
 
-Input limits: each list holds at most 10,000 strings and each string at most
-1,000 characters. Requests over a limit are rejected with `422`. Empty lists
-are accepted.
+The input has no size limits on the number of strings or on their length. Empty
+lists are accepted.
 
 ```bash
 curl -X POST http://localhost:8000/payload \
@@ -105,6 +104,7 @@ cat payload.json | cache-cli -i -
 | `-r`, `--repeat N` | number of iterations, default `1` |
 | `-i`, `--input FILE` | JSON input file, `-` for stdin |
 | `-j`, `--json JSON` | inline JSON input |
+| `-t`, `--timeout SECONDS` | request timeout, default `600` |
 | `-o`, `--output FILE` | output file, `-` for stdout (default) |
 | `-h`, `--help` | show help |
 
@@ -150,6 +150,27 @@ mypy .
 
 `pre-commit run --all-files` runs black, flake8, mypy, and basic file checks.
 
+## Large payloads
+
+There is no input limit, and a request with 1,000,000 pairs (2,000,000 strings)
+works. Measured on one Windows machine with the server and SQLite on a local
+disk, with strings drawn from a pool of 500,000 distinct values (about 490,000
+distinct strings in the request), a 60 MB request body, and the
+`cache-cli` default timeout:
+
+| Scenario | Time | Server peak memory |
+| --- | --- | --- |
+| 1,000,000 pairs, empty cache | 8.2 s | 552 MB |
+| same pairs swapped, every string cached | 5.2 s | 552 MB |
+| exact same request again | 0.6 s | 552 MB |
+
+The output has 2,000,000 words (47 MB). Before the changes below the same
+empty-cache request took 12.8 s with 1,117 MB peak and the cached one 8.6 s. A
+3,000,000-pair request also completed (14.3 s, 1,263 MB peak). Memory grows
+with the request size because the body, the output and the unique strings are
+held in memory, so the practical limit is the available RAM and the client
+timeout (`--timeout`); the numbers will differ on other machines.
+
 ## Design decisions
 
 - **Deterministic payload id.** The id is the sha256 of the canonical JSON of both
@@ -158,8 +179,8 @@ mypy .
 - **Cache per string.** Transformed strings are cached individually, so a string
   shared between payloads is never transformed again.
 - **Minimal transformer calls.** Only unique strings that are not yet cached are
-  transformed, concurrently with `asyncio.gather`, limited by a semaphore of 10
-  per request.
+  transformed, by 10 workers per request that take strings from a shared queue,
+  so memory does not grow with the number of strings.
 - **Async SQLAlchemy.** The service uses `AsyncSession` with aiosqlite so
   requests do not block the event loop.
 

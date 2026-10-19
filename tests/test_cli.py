@@ -6,10 +6,12 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 import uvicorn
 
 from app.main import get_app
+from cli.client import PayloadClient, PayloadClientError
 from cli.main import main
 from cli.settings import CliSettings
 
@@ -102,7 +104,40 @@ def test_rejected_payload_is_reported(
 ) -> None:
     unequal = json.dumps({"list_1": ["a"], "list_2": []})
     assert main(["-H", server_url, "-j", unequal]) == 2
-    assert "failed with status 422" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "failed with status 422: " in error
+    assert "must have the same length" in error
+
+
+def test_not_found_reason_is_reported(server_url: str) -> None:
+    client = PayloadClient(httpx.Client(base_url=server_url))
+
+    with pytest.raises(PayloadClientError, match="status 404: Payload nope not found"):
+        client.get_output("nope")
+
+
+def test_timeout_defaults_to_ten_minutes() -> None:
+    assert CliSettings(_cli_parse_args=["-j", PAYLOAD_JSON]).timeout == 600
+
+
+def test_timeout_option_is_parsed() -> None:
+    settings = CliSettings(_cli_parse_args=["-j", PAYLOAD_JSON, "-t", "2.5"])
+
+    assert settings.timeout == 2.5
+
+
+def test_timeout_must_be_positive(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["-j", PAYLOAD_JSON, "--timeout", "0"]) == 2
+    assert "greater than 0" in capsys.readouterr().err
+
+
+def test_request_timeout_is_reported(capsys: pytest.CaptureFixture[str]) -> None:
+    with socket.socket() as silent:
+        silent.bind(("127.0.0.1", 0))
+        silent.listen()
+        url = f"http://127.0.0.1:{silent.getsockname()[1]}"
+        assert main(["-H", url, "-j", PAYLOAD_JSON, "-t", "0.2"]) == 2
+    assert "cannot reach server" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
