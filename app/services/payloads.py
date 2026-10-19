@@ -41,15 +41,15 @@ class PayloadService:
         return payload_id
 
     async def get_output(self, payload_id: str) -> str:
-        async with self._unit_of_work as unit_of_work:
-            payload = await unit_of_work.payloads.get(payload_id)
+        async with self._unit_of_work as uow:
+            payload = await uow.payloads.get(payload_id)
         if payload is None:
             raise PayloadNotFoundError(payload_id)
         return payload.output
 
     async def _payload_exists(self, payload_id: str) -> bool:
-        async with self._unit_of_work as unit_of_work:
-            return await unit_of_work.payloads.get(payload_id) is not None
+        async with self._unit_of_work as uow:
+            return await uow.payloads.get(payload_id) is not None
 
     async def _transform_all(self, strings: list[str]) -> dict[str, str]:
         cached = await self._load_cached(strings)
@@ -57,8 +57,8 @@ class PayloadService:
         return cached | await self._transform_missing(missing)
 
     async def _load_cached(self, strings: list[str]) -> dict[str, str]:
-        async with self._unit_of_work as unit_of_work:
-            entries = await unit_of_work.transformed_strings.get_many(strings)
+        async with self._unit_of_work as uow:
+            entries = await uow.transformed_strings.get_many(strings)
         return {entry.original: entry.transformed for entry in entries}
 
     async def _transform_missing(self, texts: list[str]) -> dict[str, str]:
@@ -109,19 +109,19 @@ class PayloadService:
                     raise TransformerError(text) from error
 
     async def _save_transformed(self, transformed_by_text: dict[str, str]) -> None:
-        async with self._unit_of_work as unit_of_work:
-            await unit_of_work.transformed_strings.add_many(
+        async with self._unit_of_work as uow:
+            await uow.transformed_strings.add_many(
                 TransformedStringDto(original, transformed)
                 for original, transformed in transformed_by_text.items()
             )
-            await unit_of_work.commit()
+            await uow.commit()
 
     async def _save_payload(self, payload: PayloadDto) -> None:
         # Separate transaction after the cache is committed: if saving the payload
         # fails, the transformed strings are already stored.
-        async with self._unit_of_work as unit_of_work:
-            await unit_of_work.payloads.add(payload)
-            await unit_of_work.commit()
+        async with self._unit_of_work as uow:
+            await uow.payloads.add(payload)
+            await uow.commit()
 
     @staticmethod
     def _compute_payload_id(list_1: list[str], list_2: list[str]) -> str:
