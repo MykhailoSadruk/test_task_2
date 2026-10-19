@@ -15,6 +15,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "MAX_LIST_ITEMS",
         "MAX_BODY_SIZE",
         "MAX_TRANSFORMER_CALLS",
+        "LOG_LEVEL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -144,3 +145,18 @@ def test_async_sqlite_urls_are_accepted(database_url: str) -> None:
     assert Settings(_env_file=None, database_url=database_url).database_url == (
         database_url
     )
+
+
+def test_log_level_default_and_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert Settings(_env_file=None).log_level == "INFO"
+
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+
+    assert Settings(_env_file=None).log_level == "DEBUG"
+
+
+def test_unknown_log_level_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOG_LEVEL", "LOUD")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

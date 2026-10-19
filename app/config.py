@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,6 +15,7 @@ class Settings(BaseSettings):
     max_list_items: int | None = Field(None, ge=1)
     max_body_size: int | None = Field(None, ge=1)
     max_transformer_calls: int = Field(50, ge=1)
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("database_url")
     @classmethod
