@@ -26,3 +26,5 @@ repos:
           - pydantic-settings
           - httpx
           - pytest
+          - aiosqlite
+          - pytest-asyncio

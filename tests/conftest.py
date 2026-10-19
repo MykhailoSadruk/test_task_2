@@ -1,19 +1,16 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
-import pytest
-from sqlalchemy import StaticPool, create_engine
-from sqlalchemy.orm import Session
+import pytest_asyncio
+from sqlalchemy import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.infrastructure.database import create_tables
 
 
-@pytest.fixture
-def session() -> Iterator[Session]:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    create_tables(engine)
-    with Session(engine) as db_session:
+@pytest_asyncio.fixture
+async def session() -> AsyncIterator[AsyncSession]:
+    engine = create_async_engine("sqlite+aiosqlite://", poolclass=StaticPool)
+    await create_tables(engine)
+    async with AsyncSession(engine, expire_on_commit=False) as db_session:
         yield db_session
+    await engine.dispose()

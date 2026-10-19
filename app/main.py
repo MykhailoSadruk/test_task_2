@@ -11,7 +11,7 @@ from app.infrastructure.database import create_tables
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    create_tables()
+    await create_tables()
     yield
 
 

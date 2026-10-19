@@ -2,4 +2,4 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./cache.db"
+    database_url: str = "sqlite+aiosqlite:///./cache.db"

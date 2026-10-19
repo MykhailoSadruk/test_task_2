@@ -1,26 +1,24 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
-from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.config import Settings
 from app.infrastructure.models import Base
 
-
-def create_db_engine(database_url: str) -> Engine:
-    connect_args = {"check_same_thread": False}
-    if not database_url.startswith("sqlite"):
-        connect_args = {}
-    return create_engine(database_url, connect_args=connect_args)
+engine = create_async_engine(Settings().database_url)
+session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
-engine = create_db_engine(Settings().database_url)
+async def create_tables(bind: AsyncEngine = engine) -> None:
+    async with bind.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
 
 
-def create_tables(bind: Engine = engine) -> None:
-    Base.metadata.create_all(bind)
-
-
-def get_session() -> Iterator[Session]:
-    with Session(engine) as session:
+async def get_session() -> AsyncIterator[AsyncSession]:
+    async with session_factory() as session:
         yield session

@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.database import get_session
 from app.infrastructure.repositories import (
@@ -14,13 +14,13 @@ from app.services.payloads import PayloadService
 
 
 def get_payload_repository(
-    session: Session = Depends(get_session),
+    session: AsyncSession = Depends(get_session),
 ) -> PayloadRepository:
     return PayloadRepository(session)
 
 
 def get_transformed_string_repository(
-    session: Session = Depends(get_session),
+    session: AsyncSession = Depends(get_session),
 ) -> TransformedStringRepository:
     return TransformedStringRepository(session)
 
