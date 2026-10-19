@@ -75,8 +75,9 @@ class CliSettings(BaseSettings):
     def read_raw_json(self) -> str:
         if self.json_ is not None:
             return self.json_
+        if self.input is None:
+            raise ValueError("exactly one of --input and --json is required")
         if self.input == "-":
             return sys.stdin.read()
-        assert self.input is not None
         with open(self.input, encoding="utf-8") as file:
             return file.read()
