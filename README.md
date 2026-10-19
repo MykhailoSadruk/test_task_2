@@ -10,6 +10,10 @@ of both lists. Transformed strings and finished payloads are stored in SQLite.
 `POST /payload` takes two lists of the same length and returns `201` with the
 payload id. A request with lists of different length is rejected with `422`.
 
+Input limits: each list holds at most 10,000 strings and each string at most
+1,000 characters. Requests over a limit are rejected with `422`. Empty lists
+are accepted.
+
 ```bash
 curl -X POST http://localhost:8000/payload \
   -H "Content-Type: application/json" \
