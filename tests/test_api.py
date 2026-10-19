@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_transformer
 from app.infrastructure.database import get_session
-from app.main import app
+from app.main import get_app
 from app.services.interfaces import Transformer
 
 SAMPLE = {
@@ -41,13 +41,13 @@ async def client(
     async def override_session() -> AsyncIterator[AsyncSession]:
         yield session
 
+    app = get_app()
     app.dependency_overrides[get_session] = override_session
     app.dependency_overrides[get_transformer] = lambda: transformer
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as async_client:
         yield async_client
-    app.dependency_overrides.clear()
 
 
 async def test_sample_payload_round_trip(client: AsyncClient) -> None:

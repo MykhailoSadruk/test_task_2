@@ -41,7 +41,7 @@ Requires Python 3.12+.
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install .
-uvicorn app.main:app --port 8000
+uvicorn app.main:get_app --factory --port 8000
 ```
 
 ## Run with Docker
