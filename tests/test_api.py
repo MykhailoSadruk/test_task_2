@@ -3,7 +3,7 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.dependencies import get_transformer, get_unit_of_work
 from app.infrastructure.unit_of_work import UnitOfWork
@@ -137,3 +137,25 @@ async def test_transformer_failure_returns_502(
 
     assert response.status_code == 502
     assert response.json() == {"detail": "Transformer service failed"}
+
+
+async def test_health_reports_ok(client: AsyncClient) -> None:
+    response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+async def test_health_reports_unavailable_database() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:////missing-directory/db.sqlite")
+    broken_factory = async_sessionmaker(engine, expire_on_commit=False)
+    app = get_app()
+    app.dependency_overrides[get_unit_of_work] = lambda: UnitOfWork(broken_factory)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as broken_client:
+        response = await broken_client.get("/health")
+    await engine.dispose()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Database unavailable"}

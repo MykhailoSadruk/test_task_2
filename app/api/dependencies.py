@@ -24,4 +24,5 @@ def get_payload_service(
     return PayloadService(unit_of_work, transformer)
 
 
+UnitOfWorkDep = Annotated[UnitOfWork, Depends(get_unit_of_work)]
 PayloadServiceDep = Annotated[PayloadService, Depends(get_payload_service)]
