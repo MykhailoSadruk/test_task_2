@@ -36,6 +36,9 @@ curl http://localhost:8000/payload/db1643219a6c379b295897e1daa542e2a58690ab61fa7
 
 Interactive docs are served at `http://localhost:8000/docs`.
 
+`GET /health` returns `{"status": "ok"}` after a test query to the database, or `503`
+when the database cannot be reached. The Docker healthcheck uses it.
+
 ## Run locally
 
 Requires Python 3.12+.
@@ -78,7 +81,7 @@ Compose reads `APP_PORT` from the shell or from a `.env` file next to
 ```bash
 echo "APP_PORT=8794" > .env
 docker compose up --build
-curl http://localhost:8794/docs
+curl http://localhost:8794/health
 ```
 
 Compose passes only `APP_PORT` to the container; `DATABASE_URL` from `.env` is
