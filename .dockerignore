@@ -1,0 +1,14 @@
+.venv
+.git
+.github
+__pycache__
+*.py[cod]
+.mypy_cache
+.pytest_cache
+.claude
+.superpowers
+CLAUDE.md
+*.db
+*.egg-info
+build
+tests
