@@ -1,37 +1,47 @@
 from sqlalchemy.orm import Session
 
-from app.infrastructure.dtos import PayloadDto
+from app.infrastructure.dtos import PayloadDto, TransformedStringDto
 from app.infrastructure.repositories import (
     PayloadRepository,
     TransformedStringRepository,
 )
 
 
-def test_get_many_returns_only_hits(session: Session) -> None:
+def stored(session: Session, **entries: str) -> TransformedStringRepository:
     repository = TransformedStringRepository(session)
-    repository.add_many({"a": "A", "b": "B"})
+    repository.add_many(
+        TransformedStringDto(original=key, transformed=value)
+        for key, value in entries.items()
+    )
+    return repository
 
-    assert repository.get_many(["a", "b"]) == {"a": "A", "b": "B"}
+
+def as_dict(entries: list[TransformedStringDto]) -> dict[str, str]:
+    return {entry.original: entry.transformed for entry in entries}
+
+
+def test_get_many_returns_only_hits(session: Session) -> None:
+    repository = stored(session, a="A", b="B")
+
+    assert as_dict(repository.get_many(["a", "b"])) == {"a": "A", "b": "B"}
 
 
 def test_get_many_returns_partial_hits(session: Session) -> None:
-    repository = TransformedStringRepository(session)
-    repository.add_many({"a": "A"})
+    repository = stored(session, a="A")
 
-    assert repository.get_many(["a", "missing"]) == {"a": "A"}
+    assert repository.get_many(["a", "missing"]) == [
+        TransformedStringDto(original="a", transformed="A")
+    ]
 
 
 def test_get_many_with_empty_input(session: Session) -> None:
-    repository = TransformedStringRepository(session)
-
-    assert repository.get_many([]) == {}
+    assert TransformedStringRepository(session).get_many([]) == []
 
 
 def test_add_many_persists_entries(session: Session) -> None:
-    repository = TransformedStringRepository(session)
-    repository.add_many({"x": "X", "y": "Y"})
+    repository = stored(session, x="X", y="Y")
 
-    assert repository.get_many(["x", "y"]) == {"x": "X", "y": "Y"}
+    assert as_dict(repository.get_many(["x", "y"])) == {"x": "X", "y": "Y"}
 
 
 def test_payload_add_and_get(session: Session) -> None:
